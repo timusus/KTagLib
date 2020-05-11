@@ -1,0 +1,3 @@
+[submodule "taglib"]
+	path = taglib
+	url = https://github.com/timusus/taglib.git
