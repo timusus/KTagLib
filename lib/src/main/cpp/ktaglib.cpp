@@ -259,7 +259,15 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_simplecityapps_ktaglib_KTagLib_
         if (TagLib::FLAC::File* file = dynamic_cast<TagLib::FLAC::File*>(fileRef.file()))
         {
             const TagLib::List<TagLib::FLAC::Picture*>& picList = file->pictureList();
-            if (!picList.isEmpty()) { byteVector = picList[0]->data(); }
+            if (!picList.isEmpty()) {
+                size_t picSize = 0;
+                for (int i = 0; i < picList.size(); i++) {
+                    size_t size = picList[i]->data().size();
+                    if (size > picSize) {
+                        byteVector = picList[i]->data();
+                    }
+                }
+            }
         } else {
             TagLib::Tag *tag = fileRef.tag();
             TagLib::PictureMap pictureMap = tag->pictures();
