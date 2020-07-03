@@ -2,6 +2,8 @@
 #include <jni.h>
 #include <sys/stat.h>
 #include <fileref.h>
+#include <tfile.h>
+#include <flacfile.h>
 #include <toolkit/tiostream.h>
 #include <toolkit/tfilestream.h>
 #include <toolkit/tpicture.h>
@@ -253,24 +255,27 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_simplecityapps_ktaglib_KTagLib_
     TagLib::FileRef fileRef(stream);
 
     if (!fileRef.isNull()) {
-        TagLib::Tag *tag = fileRef.tag();
-
-        TagLib::PictureMap pictureMap = tag->pictures();
-
-        TagLib::Picture picture;
-
-        // Finds the largest picture by byte size
-        size_t picSize = 0;
-        for (auto const &x: pictureMap) {
-            for (auto const &y: x.second) {
-                size_t size = y.data().size();
-                if (size > picSize) {
-                    picture = y;
+        TagLib::ByteVector byteVector;
+        if (TagLib::FLAC::File* file = dynamic_cast<TagLib::FLAC::File*>(fileRef.file()))
+        {
+            const TagLib::List<TagLib::FLAC::Picture*>& picList = file->pictureList();
+            if (!picList.isEmpty()) { byteVector = picList[0]->data(); }
+        } else {
+            TagLib::Tag *tag = fileRef.tag();
+            TagLib::PictureMap pictureMap = tag->pictures();
+            TagLib::Picture picture;
+            // Finds the largest picture by byte size
+            size_t picSize = 0;
+            for (auto const &x: pictureMap) {
+                for (auto const &y: x.second) {
+                    size_t size = y.data().size();
+                    if (size > picSize) {
+                        picture = y;
+                    }
                 }
             }
+            byteVector = picture.data();
         }
-
-        TagLib::ByteVector byteVector = picture.data();
         size_t len = byteVector.size();
         if (len > 0) {
             jbyteArray arr = env->NewByteArray(len);
