@@ -2,6 +2,9 @@
 #include <jni.h>
 #include <sys/stat.h>
 #include <fileref.h>
+#include <flacfile.h>
+#include <opusfile.h>
+#include <xiphcomment.h>
 #include <toolkit/tiostream.h>
 #include <toolkit/tfilestream.h>
 #include <toolkit/tpicture.h>
@@ -253,24 +256,51 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_simplecityapps_ktaglib_KTagLib_
     TagLib::FileRef fileRef(stream);
 
     if (!fileRef.isNull()) {
-        TagLib::Tag *tag = fileRef.tag();
-
-        TagLib::PictureMap pictureMap = tag->pictures();
-
-        TagLib::Picture picture;
-
-        // Finds the largest picture by byte size
-        size_t picSize = 0;
-        for (auto const &x: pictureMap) {
-            for (auto const &y: x.second) {
-                size_t size = y.data().size();
-                if (size > picSize) {
-                    picture = y;
+        TagLib::ByteVector byteVector;
+        if (auto* flacFile = dynamic_cast<TagLib::FLAC::File*>(fileRef.file()))
+        {
+            const TagLib::List<TagLib::FLAC::Picture*>& picList = flacFile->pictureList();
+            if (!picList.isEmpty()) {
+                byteVector = picList[0]->data();
+                size_t picSize = 0;
+                for (auto i : picList) {
+                    size_t size = i->data().size();
+                    if (size > picSize) {
+                        byteVector = i->data();
+                    }
+                    picSize = size;
                 }
             }
+        } else if (auto* opusFile = dynamic_cast<TagLib::Ogg::Opus::File*>(fileRef.file())) {
+            TagLib::Ogg::XiphComment *tag = opusFile->tag();
+            const TagLib::List<TagLib::FLAC::Picture*>& picList = tag->pictureList();
+            if (!picList.isEmpty()) {
+                size_t picSize = 0;
+                for (auto i : picList) {
+                    size_t size = i->data().size();
+                    if (size > picSize) {
+                        byteVector = i->data();
+                    }
+                    picSize = size;
+                }
+            }
+        } else {
+            TagLib::Tag *tag = fileRef.tag();
+            TagLib::PictureMap pictureMap = tag->pictures();
+            TagLib::Picture picture;
+            // Finds the largest picture by byte size
+            size_t picSize = 0;
+            for (auto const &x: pictureMap) {
+                for (auto const &y: x.second) {
+                    size_t size = y.data().size();
+                    if (size > picSize) {
+                        picture = y;
+                    }
+                    picSize = size;
+                }
+            }
+            byteVector = picture.data();
         }
-
-        TagLib::ByteVector byteVector = picture.data();
         size_t len = byteVector.size();
         if (len > 0) {
             jbyteArray arr = env->NewByteArray(len);

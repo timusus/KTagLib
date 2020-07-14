@@ -20,4 +20,7 @@ target_include_directories(tag PUBLIC
 
 target_include_directories(ktaglib PUBLIC
         "../../../../taglib/taglib"
+        "../../../../taglib/taglib/flac"
+        "../../../../taglib/taglib/ogg"
+        "../../../../taglib/taglib/ogg/opus"
         "../../../../taglib/taglib/toolkit")
