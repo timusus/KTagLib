@@ -12,7 +12,7 @@ See the sample app for an example of reading tags, using the Storage Access Fram
 
 Instantiate KTagLib:
 
-`val tagLib = KTagLib()``
+`val tagLib = KTagLib()`
 
 #### Read Tags ####
 
