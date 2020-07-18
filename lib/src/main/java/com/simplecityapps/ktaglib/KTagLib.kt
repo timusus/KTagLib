@@ -7,7 +7,7 @@ class KTagLib {
      * ] representing the metadata associated with the file located at File Descriptor [fd]
      *
      * @param fd File descriptor
-     * @param path Path to the file (
+     * @param path Path to the file
      */
     external fun getAudioFile(fd: Int, path: String, name: String): AudioFile?
 
