@@ -3,7 +3,7 @@
 Kotlin bindings for [TagLib](https://github.com/taglib/taglib)
 
 Gradle:
-`implementation("com.github.timusus:KTagLib:shuttle2-SNAPSHOT")`
+`implementation("com.github.timusus:KTagLib:master-SNAPSHOT")`
 
 See the sample app for an example of reading tags, using the Storage Access Framework.
 
