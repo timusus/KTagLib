@@ -16,10 +16,15 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 
 class MainActivity : AppCompatActivity() {
 
-    private val scope = CoroutineScope(Dispatchers.Main)
+    private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        Log.e("MainActivity", "Coroutine failed: ${throwable.localizedMessage}")
+    }
+
+    private val scope = CoroutineScope(Dispatchers.Main + exceptionHandler)
 
     private lateinit var documentAdapter: DocumentAdapter
 
@@ -80,51 +85,55 @@ class MainActivity : AppCompatActivity() {
     private suspend fun parseUri(uri: Uri): List<Document> {
         return withContext(Dispatchers.IO) {
             val childDocumentsUri = DocumentsContract.buildChildDocumentsUriUsingTree(uri, DocumentsContract.getTreeDocumentId(uri))
+            traverse(uri, childDocumentsUri, mutableListOf())
+        }
+    }
 
-            val documents = mutableListOf<Document>()
-            contentResolver.query(
-                childDocumentsUri,
-                arrayOf(
-                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-                    DocumentsContract.Document.COLUMN_MIME_TYPE
-                ),
-                null,
-                null,
-                null
-            ).use { cursor ->
-                cursor?.let { cursor ->
-                    while (cursor.moveToNext()) {
-                        val documentId = cursor.getString(cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID))
-                        val displayName = cursor.getString(cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME))
-                        val mimeType = cursor.getString(cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE))
-                        val childDocumentUri = DocumentsContract.buildDocumentUriUsingTree(uri, documentId)
-                        if (mimeType != DocumentsContract.Document.MIME_TYPE_DIR) {
-                            if (mimeType.startsWith("audio") ||
-                                arrayOf("mp3", "3gp", "mp4", "m4a", "m4b", "aac", "ts", "flac", "mid", "xmf", "mxmf", "midi", "rtttl", "rtx", "ota", "imy", "ogg", "mkv", "wav")
-                                    .contains(displayName.substringAfterLast('.'))
-                            ) {
-                                documents.add(Document(childDocumentUri, documentId, displayName, mimeType))
-                            }
+    private fun traverse(treeUri: Uri, documentUri: Uri, documents: MutableList<Document> = mutableListOf()): List<Document> {
+        contentResolver.query(
+            documentUri,
+            arrayOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE
+            ),
+            null,
+            null,
+            null
+        ).use { cursor ->
+            cursor?.let {
+                while (cursor.moveToNext()) {
+                    val documentId = cursor.getString(cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID))
+                    val displayName = cursor.getString(cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME))
+                    val mimeType = cursor.getString(cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE))
+                    val childDocumentUri = DocumentsContract.buildDocumentUriUsingTree(documentUri, documentId)
+                    if (mimeType == DocumentsContract.Document.MIME_TYPE_DIR) {
+                        traverse(treeUri, DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, documentId), documents)
+                    } else {
+                        if (mimeType.startsWith("audio") ||
+                            arrayOf("mp3", "3gp", "mp4", "m4a", "m4b", "aac", "ts", "flac", "mid", "xmf", "mxmf", "midi", "rtttl", "rtx", "ota", "imy", "ogg", "mkv", "wav", "opus")
+                                .contains(displayName.substringAfterLast('.'))
+                        ) {
+                            documents.add(Document(childDocumentUri, documentId, displayName, mimeType))
                         }
                     }
                 }
-            } ?: Log.e(TAG, "Failed to iterate cursor (null)")
+            }
+        } ?: Log.e(TAG, "Failed to iterate cursor (null)")
 
-            documents
-        }
+        return documents
     }
 
     private fun getTags(documents: List<Document>): Flow<Pair<AudioFile, Document>> {
         return flow {
             documents.forEach { document ->
                 contentResolver.openFileDescriptor(document.uri, "r")?.use { pfd ->
-                    tagLib.getAudioFile(pfd.fd, document.uri.toString(), document.displayName.substringBeforeLast(".") ?: "Unknown")?.let { audioFile ->
+                    tagLib.getAudioFile(pfd.detachFd(), document.uri.toString(), document.displayName.substringBeforeLast(".") ?: "Unknown")?.let { audioFile ->
                         emit(Pair(audioFile, document))
                     }
                 }
             }
-        }
+        }.flowOn(Dispatchers.IO)
     }
 
 
@@ -133,7 +142,5 @@ class MainActivity : AppCompatActivity() {
     companion object {
         const val TAG = "MainActivity"
         const val REQUEST_CODE_OPEN_DOCUMENT = 100
-
-
     }
 }

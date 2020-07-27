@@ -39,7 +39,7 @@ class DocumentAdapter : RecyclerView.Adapter<ViewHolder>() {
         holder.durationTextView.text = audioFile.duration?.toHms()
         holder.artistTextView.text = audioFile.artist
         holder.albumTextView.text = audioFile.album
-        holder.yearTextView.text = audioFile.year.toString()
+        holder.yearTextView.text = audioFile.date
         holder.discTextView.text = audioFile.disc.toString()
         holder.mimeTypeTextView.text = document.mimeType
         holder.sizeTextView.text = "${"%.2f".format((audioFile.size / 1024f / 1024f))}MB"

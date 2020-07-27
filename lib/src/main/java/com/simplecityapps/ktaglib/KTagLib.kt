@@ -26,7 +26,7 @@ class KTagLib {
         artist: String?,
         album: String?,
         albumArtist: String?,
-        year: Int?,
+        date: String?,
         track: Int?,
         trackTotal: Int?,
         disc: Int?,
