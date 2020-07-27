@@ -12,9 +12,9 @@
 
         <TextView
             android:id="@+id/documentName"
+            style="@style/TextAppearance.MaterialComponents.Subtitle1"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            style="@style/TextAppearance.MaterialComponents.Subtitle1"
             android:textSize="13sp"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
@@ -200,19 +200,20 @@
             style="@style/TextAppearance.MaterialComponents.Subtitle1"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="24dp"
+            android:layout_marginStart="8dp"
             android:layout_marginTop="4dp"
             android:text="Size"
             android:textSize="14sp"
-            app:layout_constraintStart_toEndOf="@id/mimeTypeHeading"
-            app:layout_constraintTop_toBottomOf="@id/year" />
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/mimeType" />
 
         <TextView
             android:id="@+id/size"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
             android:textSize="12sp"
-            app:layout_constraintStart_toStartOf="@id/sizeHeading"
+            app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/sizeHeading"
             tools:text="4.98MB" />
 
