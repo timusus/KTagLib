@@ -40,7 +40,7 @@ Returns a `ByteArray` (or null) representing the image data of the largest image
             artist: String?,
             album: String?,
             albumArtist: String?,
-            year: Int?,
+            date: String?,
             track: Int?,
             trackTotal: Int?,
             disc: Int?,
