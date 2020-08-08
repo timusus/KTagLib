@@ -9,7 +9,17 @@
 #include <toolkit/tfilestream.h>
 #include <toolkit/tpicture.h>
 #include <toolkit/tpicturemap.h>
+#include <toolkit/tdebuglistener.h>
 #include "unique_fd.h"
+#include <android/log.h>
+
+class DebugListener : public TagLib::DebugListener {
+    void printMessage(const TagLib::String &msg) override {
+        __android_log_print(ANDROID_LOG_VERBOSE, "kTagLib", "%s", msg.toCString(true));
+    }
+};
+
+DebugListener listener;
 
 jclass globalSongClass;
 jmethodID songInit;
@@ -41,6 +51,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
     intGetValue = env->GetMethodID(globalIntClass, "intValue", "()I");
 
+    TagLib::setDebugListener(&listener);
+
     return JNI_VERSION_1_6;
 }
 
@@ -50,6 +62,8 @@ extern "C" void JNI_OnUnload(JavaVM *vm, void *reserved) {
 
     env->DeleteGlobalRef(globalSongClass);
     env->DeleteGlobalRef(globalIntClass);
+
+    TagLib::setDebugListener(nullptr);
 }
 
 extern "C" JNIEXPORT jobject JNICALL Java_com_simplecityapps_ktaglib_KTagLib_getAudioFile(JNIEnv *env, jobject instance, jint fd_, jstring path, jstring fileName) {
