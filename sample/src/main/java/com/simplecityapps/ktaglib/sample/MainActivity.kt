@@ -128,8 +128,12 @@ class MainActivity : AppCompatActivity() {
         return flow {
             documents.forEach { document ->
                 contentResolver.openFileDescriptor(document.uri, "r")?.use { pfd ->
-                    tagLib.getAudioFile(pfd.detachFd(), document.uri.toString(), document.displayName.substringBeforeLast(".") ?: "Unknown")?.let { audioFile ->
-                        emit(Pair(audioFile, document))
+                    try {
+                        tagLib.getAudioFile(pfd.fd, document.uri.toString(), document.displayName.substringBeforeLast(".") ?: "Unknown")?.let { audioFile ->
+                            emit(Pair(audioFile, document))
+                        }
+                    } catch (e: IllegalStateException) {
+                        Log.e("MainActivity", "Failed to get audio file: ", e)
                     }
                 }
             }

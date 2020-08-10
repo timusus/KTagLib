@@ -182,7 +182,7 @@ extern "C" JNIEXPORT jobject JNICALL Java_com_simplecityapps_ktaglib_KTagLib_get
         );
     }
 
-    uniqueFd.reset();
+    uniqueFd.release();
     return audioFile;
 }
 
@@ -301,7 +301,7 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_simplecityapps_ktaglib_KTagLib_up
         saved = fileRef.save();
     }
 
-    uniqueFd.reset();
+    uniqueFd.release();
     return saved;
 }
 
@@ -368,6 +368,6 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_simplecityapps_ktaglib_KTagLib_
         }
     }
 
-    uniqueFd.reset();
+    uniqueFd.release();
     return result;
 }
