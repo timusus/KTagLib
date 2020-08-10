@@ -61,10 +61,29 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == REQUEST_CODE_OPEN_DOCUMENT && resultCode == Activity.RESULT_OK) {
             data?.let { intent ->
                 intent.data?.let { uri ->
-                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
                     scope.launch {
                         documentAdapter.clear()
                         val documents = parseUri(uri)
+
+                        documents.forEach { document ->
+                            contentResolver.openFileDescriptor(document.uri, "rw")?.use { pfd ->
+                                tagLib.updateTags(
+                                    pfd.detachFd(),
+                                    title = null,
+                                    artist = "TOOL",
+                                    album = null,
+                                    albumArtist = null,
+                                    date = null,
+                                    track = null,
+                                    trackTotal = null,
+                                    disc = null,
+                                    discTotal = null,
+                                    genre = null
+                                )
+                            }
+                        }
+
                         getTags(documents).collect { pair ->
                             documentAdapter.addItem(pair)
                         }
