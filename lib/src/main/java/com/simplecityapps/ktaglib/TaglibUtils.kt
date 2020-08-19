@@ -6,6 +6,8 @@ import java.util.HashMap
 object TaglibUtils {
     private external fun getMetadata(fileDescriptor: Int, filePath: String, fileName: String) : HashMap<String, String>
 
+    external fun writeMetadata(fileDescriptor: Int, properties : HashMap<String, String>) : Boolean
+
     fun getAudioFile(fileDescriptor: Int, filePath: String, fileName: String) : AudioFile {
         val properties = getMetadata(fileDescriptor, filePath, fileName)
         Log.d("Metadata Properties", properties.toString())
