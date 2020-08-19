@@ -5,11 +5,15 @@
 #include <flacfile.h>
 #include <opusfile.h>
 #include <xiphcomment.h>
+#include <tstring.h>
+#include <tstringlist.h>
 #include <toolkit/tiostream.h>
 #include <toolkit/tfilestream.h>
 #include <toolkit/tpicture.h>
+#include <toolkit/tmap.h>
 #include <toolkit/tpicturemap.h>
 #include <toolkit/tdebuglistener.h>
+#include "unique_fd.h"
 #include <android/log.h>
 
 class DebugListener : public TagLib::DebugListener {
@@ -21,6 +25,9 @@ class DebugListener : public TagLib::DebugListener {
 DebugListener listener;
 
 jclass globalSongClass;
+jclass globalHashMapClass;
+jmethodID hashMapInit;
+jmethodID addProperty;
 jmethodID songInit;
 
 jclass globalIntClass;
@@ -33,6 +40,13 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK) {
         return JNI_ERR;
     }
+
+    jclass hashMapClass = env->FindClass("java/util/HashMap");
+    globalHashMapClass = reinterpret_cast<jclass>(env->NewGlobalRef(hashMapClass));
+    env->DeleteLocalRef(hashMapClass);
+    hashMapInit = env->GetMethodID(globalHashMapClass, "<init>", "()V");
+    addProperty = env->GetMethodID(globalHashMapClass, "put",
+            "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
 
     jclass songClass = env->FindClass("com/simplecityapps/ktaglib/AudioFile");
     globalSongClass = reinterpret_cast<jclass>(env->NewGlobalRef(songClass));
@@ -59,132 +73,17 @@ extern "C" void JNI_OnUnload(JavaVM *vm, void *reserved) {
     JNIEnv *env;
     vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
 
+    env->DeleteGlobalRef(globalHashMapClass);
     env->DeleteGlobalRef(globalSongClass);
     env->DeleteGlobalRef(globalIntClass);
 
     TagLib::setDebugListener(nullptr);
 }
 
-extern "C" JNIEXPORT jobject JNICALL Java_com_simplecityapps_ktaglib_KTagLib_getAudioFile(JNIEnv *env, jobject instance, jint fd, jstring path, jstring fileName) {
-
-    jobject audioFile = nullptr;
-
-    std::unique_ptr<TagLib::IOStream> stream = std::make_unique<TagLib::FileStream>( fd, false);
-    TagLib::FileRef fileRef(stream.get());
-
-    if (!fileRef.isNull()) {
-
-        jstring title = fileName;
-
-        jstring artist = nullptr;
-        jstring albumArtist = nullptr;
-        jstring album = nullptr;
-        jstring genre = nullptr;
-
-        jobject track = nullptr;
-        jobject trackTotal = nullptr;
-        jobject disc = nullptr;
-        jobject discTotal = nullptr;
-        jobject duration = nullptr;
-        jobject date = nullptr;
-
-        if (fileRef.audioProperties()) {
-            TagLib::AudioProperties *audioProperties = fileRef.audioProperties();
-            duration = env->NewObject(globalIntClass, intInit, audioProperties->lengthInMilliseconds());
-        }
-
-        TagLib::Tag *tag = fileRef.tag();
-        if (tag) {
-            TagLib::PropertyMap properties = tag->properties();
-
-            if (properties.contains("TITLE")) {
-                const TagLib::StringList &stringList = properties["TITLE"];
-                if (!stringList.isEmpty()) {
-                    title = env->NewStringUTF(stringList.front().toCString(true));
-                }
-            }
-
-            if (properties.contains("ARTIST")) {
-                const TagLib::StringList &stringList = properties["ARTIST"];
-                if (!stringList.isEmpty()) {
-                    artist = env->NewStringUTF(stringList.front().toCString(true));
-                }
-            }
-
-            if (properties.contains("ALBUMARTIST")) {
-                const TagLib::StringList &stringList = properties["ALBUMARTIST"];
-                if (!stringList.isEmpty()) {
-                    albumArtist = env->NewStringUTF(stringList.front().toCString(true));
-                }
-            }
-
-            if (properties.contains("ALBUM")) {
-                const TagLib::StringList &stringList = properties["ALBUM"];
-                if (!stringList.isEmpty()) {
-                    album = env->NewStringUTF(stringList.front().toCString(true));
-                }
-            }
-
-            if (properties.contains("TRACKNUMBER")) {
-                const TagLib::StringList &stringList = properties["TRACKNUMBER"];
-                if (!stringList.isEmpty()) {
-                    track = env->NewObject(globalIntClass, intInit, stringList.front().toInt());
-                }
-            }
-
-            if (properties.contains("DISCNUMBER")) {
-                const TagLib::StringList &stringList = properties["DISCNUMBER"];
-                if (!stringList.isEmpty()) {
-                    disc = env->NewObject(globalIntClass, intInit, stringList.front().toInt());
-                }
-            }
-
-            if (properties.contains("DATE")) {
-                const TagLib::StringList &stringList = properties["DATE"];
-                if (!stringList.isEmpty()) {
-                    date = env->NewStringUTF(stringList.front().toCString(true));
-                }
-            }
-
-            if (properties.contains("GENRE")) {
-                const TagLib::StringList &stringList = properties["GENRE"];
-                if (!stringList.isEmpty()) {
-                    genre = env->NewStringUTF(stringList.front().toCString(true));
-                }
-            }
-        }
-
-        struct stat statbuf{};
-        fstat(fd, &statbuf);
-        long long lastModified = statbuf.st_mtime * 1000L;
-        long long size = statbuf.st_size;
-
-        audioFile = env->NewObject(
-                globalSongClass,
-                songInit,
-                path,
-                size,
-                lastModified,
-                title,
-                albumArtist,
-                artist,
-                album,
-                track,
-                trackTotal,
-                disc,
-                discTotal,
-                duration,
-                date,
-                genre
-        );
-    }
-    return audioFile;
-}
-
 extern "C" JNIEXPORT jboolean JNICALL Java_com_simplecityapps_ktaglib_KTagLib_updateTags(
         JNIEnv *env,
         jobject instance,
-        jint fd,
+        jint fd_,
         jstring title_,
         jstring artist_,
         jstring album_,
@@ -196,8 +95,11 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_simplecityapps_ktaglib_KTagLib_up
         jobject discTotal_,
         jstring genre_
 ) {
-    std::unique_ptr<TagLib::IOStream> stream = std::make_unique<TagLib::FileStream>( fd, false);
-    TagLib::FileRef fileRef(stream.get());
+
+    unique_fd uniqueFd = unique_fd(fd_);
+
+    TagLib::IOStream *stream = new TagLib::FileStream(uniqueFd.get(), false);
+    TagLib::FileRef fileRef(stream);
 
     bool saved = false;
 
@@ -209,31 +111,41 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_simplecityapps_ktaglib_KTagLib_up
 
             if (title_) {
                 const char *title = env->GetStringUTFChars(title_, 0);
-                properties.replace("TITLE",  TagLib::String(title));
+                TagLib::StringList stringList = TagLib::StringList();
+                stringList.append(title);
+                properties.replace("TITLE", stringList);
                 env->ReleaseStringUTFChars(title_, title);
             }
 
             if (artist_) {
                 const char *artist = env->GetStringUTFChars(artist_, 0);
-                properties.replace("ARTIST", TagLib::String(artist));
+                TagLib::StringList stringList = TagLib::StringList();
+                stringList.append(artist);
+                properties.replace("ARTIST", stringList);
                 env->ReleaseStringUTFChars(artist_, artist);
             }
 
             if (album_) {
                 const char *album = env->GetStringUTFChars(album_, 0);
-                properties.replace("ALBUM", TagLib::String(album));
+                TagLib::StringList stringList = TagLib::StringList();
+                stringList.append(album);
+                properties.replace("ALBUM", stringList);
                 env->ReleaseStringUTFChars(album_, album);
             }
 
             if (albumArtist_) {
                 const char *albumArtist = env->GetStringUTFChars(albumArtist_, 0);
-                properties.replace("ALBUMARTIST", TagLib::String(albumArtist));
+                TagLib::StringList stringList = TagLib::StringList();
+                stringList.append(albumArtist);
+                properties.replace("ALBUMARTIST", stringList);
                 env->ReleaseStringUTFChars(albumArtist_, albumArtist);
             }
 
             if (date_) {
                 const char *date = env->GetStringUTFChars(date_, 0);
-                properties.replace("DATE", TagLib::String(date));
+                TagLib::StringList stringList = TagLib::StringList();
+                stringList.append(date);
+                properties.replace("DATE", stringList);
                 env->ReleaseStringUTFChars(date_, date);
             }
 
@@ -247,7 +159,9 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_simplecityapps_ktaglib_KTagLib_up
                     trackString += std::to_string(trackTotal);
                 }
 
-                properties.replace("TRACKNUMBER",  TagLib::String(trackString));
+                TagLib::StringList stringList = TagLib::StringList();
+                stringList.append(trackString);
+                properties.replace("TRACKNUMBER", stringList);
             }
 
             if (disc_) {
@@ -260,12 +174,16 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_simplecityapps_ktaglib_KTagLib_up
                     discString += std::to_string(discTotal);
                 }
 
-                properties.replace("DISCNUMBER", TagLib::String(discString));
+                TagLib::StringList stringList = TagLib::StringList();
+                stringList.append(discString);
+                properties.replace("DISCNUMBER", stringList);
             }
 
             if (genre_) {
                 const char *genre = env->GetStringUTFChars(genre_, 0);
-                properties.replace("GENRE", TagLib::String(genre));
+                TagLib::StringList stringList = TagLib::StringList();
+                stringList.append(genre);
+                properties.replace("GENRE", stringList);
                 env->ReleaseStringUTFChars(genre_, genre);
             }
 
@@ -273,14 +191,20 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_simplecityapps_ktaglib_KTagLib_up
                 tag->setProperties(properties);
             }
         }
+
         saved = fileRef.save();
     }
+
+    uniqueFd.release();
     return saved;
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jobject instance, jint fd) {
-    std::unique_ptr<TagLib::IOStream> stream = std::make_unique<TagLib::FileStream>( fd, false);
-    TagLib::FileRef fileRef(stream.get());
+extern "C" JNIEXPORT jbyteArray JNICALL Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jobject instance, jint fd_) {
+
+    unique_fd uniqueFd = unique_fd(fd_);
+
+    TagLib::IOStream *stream = new TagLib::FileStream(uniqueFd.get(), true);
+    TagLib::FileRef fileRef(stream);
 
     jbyteArray result = nullptr;
 
@@ -337,5 +261,32 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_simplecityapps_ktaglib_KTagLib_
             result = arr;
         }
     }
+
+    uniqueFd.release();
     return result;
+}
+
+extern "C"
+JNIEXPORT jobject JNICALL
+Java_com_simplecityapps_ktaglib_TaglibUtils_getMetadata(JNIEnv *env, jobject thiz, jint file_descriptor, jstring file_path, jstring file_name) {
+    unique_fd uniqueFd = unique_fd(file_descriptor);
+
+    TagLib::IOStream *stream = new TagLib::FileStream(uniqueFd.get(), true);
+    TagLib::FileRef fileRef(stream);
+
+    jobject properties = env->NewObject(globalHashMapClass, hashMapInit);
+
+    if (fileRef.isValid()) {
+        TagLib::PropertyMap taglibProperties = fileRef.properties();
+        for (auto & taglibProperty : taglibProperties)
+            if (!taglibProperty.second.isEmpty()) {
+                jstring key = env->NewStringUTF(taglibProperty.first.toCString(true));
+                jstring value = env->NewStringUTF(taglibProperty.second.front().toCString(true));
+                env->CallObjectMethod(properties, addProperty, key, value);
+            }
+    }
+
+    uniqueFd.release();
+
+    return properties;
 }
