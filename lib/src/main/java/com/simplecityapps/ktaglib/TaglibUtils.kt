@@ -13,8 +13,8 @@ object TaglibUtils {
         Log.d("Metadata Properties", properties.toString())
         return AudioFile(
             filePath,
-            0,
-            0,
+            properties["SIZE"]?.toLong() ?: 0,
+            properties["LAST_MODIFIED"]?.toLong() ?: 0,
             properties["TITLE"],
             properties["ALBUMARTIST"],
             properties["ARTIST"],

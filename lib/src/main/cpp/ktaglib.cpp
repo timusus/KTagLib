@@ -183,6 +183,13 @@ const char* convertJStringToCString(JNIEnv *env, jstring str) {
     return CString;
 }
 
+void addIntegerProperty(JNIEnv *env, jobject properties, const char* key, long long value) {
+    std::string string_value = std::to_string(value);
+    jstring jKey = env->NewStringUTF(key);
+    jstring jValue = env->NewStringUTF(string_value.c_str());
+    env->CallObjectMethod(properties, addProperty, jKey, jValue);
+}
+
 extern "C"
 JNIEXPORT jobject JNICALL
 Java_com_simplecityapps_ktaglib_TaglibUtils_getMetadata(JNIEnv *env, jobject thiz, jint file_descriptor, jstring file_path, jstring file_name) {
@@ -194,13 +201,24 @@ Java_com_simplecityapps_ktaglib_TaglibUtils_getMetadata(JNIEnv *env, jobject thi
     jobject properties = env->NewObject(globalHashMapClass, hashMapInit);
 
     if (fileRef.isValid()) {
-        TagLib::PropertyMap taglibProperties = fileRef.properties();
+        auto taglibProperties = fileRef.properties();
         for (auto & taglibProperty : taglibProperties)
             if (!taglibProperty.second.isEmpty()) {
                 jstring key = env->NewStringUTF(taglibProperty.first.toCString(true));
                 jstring value = env->NewStringUTF(taglibProperty.second.front().toCString(true));
                 env->CallObjectMethod(properties, addProperty, key, value);
             }
+
+        auto audioProperties = fileRef.audioProperties();
+        addIntegerProperty(env, properties, "BITRATE", audioProperties->bitrate());
+        addIntegerProperty(env, properties, "CHANNELS", audioProperties->channels());
+        addIntegerProperty(env, properties, "DURATION", audioProperties->lengthInMilliseconds());
+        addIntegerProperty(env, properties, "SAMPLERATE", audioProperties->sampleRate());
+
+        struct stat statbuf{};
+        fstat(uniqueFd.get(), &statbuf);
+        addIntegerProperty(env, properties, "LAST_MODIFIED", statbuf.st_mtime * 1000L);
+        addIntegerProperty(env, properties, "SIZE", statbuf.st_size);
     }
 
     uniqueFd.release();
