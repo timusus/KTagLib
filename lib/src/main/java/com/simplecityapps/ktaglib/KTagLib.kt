@@ -1,7 +1,7 @@
 package com.simplecityapps.ktaglib
 
 import android.util.Log
-import java.util.HashMap
+import java.util.*
 
 object KTagLib {
 
