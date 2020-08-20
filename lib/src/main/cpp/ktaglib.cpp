@@ -110,7 +110,7 @@ extern "C" void JNI_OnUnload(JavaVM *vm, void *reserved) {
     TagLib::setDebugListener(nullptr);
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jobject instance, jint fd_) {
+extern "C" JNIEXPORT jbyteArray JNICALL Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jclass clazz, jint fd_) {
 
     unique_fd uniqueFd = unique_fd(fd_);
 
@@ -192,7 +192,7 @@ void addIntegerProperty(JNIEnv *env, jobject properties, const char* key, long l
 
 extern "C"
 JNIEXPORT jobject JNICALL
-Java_com_simplecityapps_ktaglib_TaglibUtils_getMetadata(JNIEnv *env, jobject thiz, jint file_descriptor, jstring file_path, jstring file_name) {
+Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, jint file_descriptor) {
     unique_fd uniqueFd = unique_fd(file_descriptor);
 
     TagLib::IOStream *stream = new TagLib::FileStream(uniqueFd.get(), true);
@@ -228,7 +228,7 @@ Java_com_simplecityapps_ktaglib_TaglibUtils_getMetadata(JNIEnv *env, jobject thi
 
 extern "C"
 JNIEXPORT jboolean JNICALL
-Java_com_simplecityapps_ktaglib_TaglibUtils_writeMetadata(JNIEnv *env, jobject thiz, jint file_descriptor, jobject properties) {
+Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz, jint file_descriptor, jobject properties) {
     unique_fd uniqueFd = unique_fd(file_descriptor);
 
     TagLib::IOStream *stream = new TagLib::FileStream(uniqueFd.get(), false);
