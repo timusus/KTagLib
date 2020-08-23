@@ -110,7 +110,6 @@ extern "C" JNIEXPORT jobject JNICALL Java_com_simplecityapps_ktaglib_KTagLib_get
                 const TagLib::StringList &stringList = properties["ARTIST"];
                 if (!stringList.isEmpty()) {
                     artist = env->NewStringUTF(stringList.front().toCString(true));
-                    albumArtist = artist;
                 }
             }
 
