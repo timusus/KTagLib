@@ -68,19 +68,25 @@ class MainActivity : AppCompatActivity() {
 
                         documents.forEach { document ->
                             contentResolver.openFileDescriptor(document.uri, "rw")?.use { pfd ->
-                                tagLib.updateTags(
-                                    pfd.detachFd(),
-                                    title = null,
-                                    artist = "TOOL",
-                                    album = null,
-                                    albumArtist = null,
-                                    date = null,
-                                    track = null,
-                                    trackTotal = null,
-                                    disc = null,
-                                    discTotal = null,
-                                    genre = null
-                                )
+                                pfd.use {
+                                    try {
+                                        tagLib.updateTags(
+                                            pfd.fd,
+                                            title = null,
+                                            artist = "TOOL",
+                                            album = null,
+                                            albumArtist = "TOOL",
+                                            date = null,
+                                            track = null,
+                                            trackTotal = null,
+                                            disc = null,
+                                            discTotal = null,
+                                            genre = null
+                                        )
+                                    } catch (e: java.lang.IllegalStateException) {
+                                        Log.e("MainActivity", "Failed to update tags", e)
+                                    }
+                                }
                             }
                         }
 
@@ -147,12 +153,14 @@ class MainActivity : AppCompatActivity() {
         return flow {
             documents.forEach { document ->
                 contentResolver.openFileDescriptor(document.uri, "r")?.use { pfd ->
-                    try {
-                        tagLib.getAudioFile(pfd.fd, document.uri.toString(), document.displayName.substringBeforeLast(".") ?: "Unknown")?.let { audioFile ->
-                            emit(Pair(audioFile, document))
+                    pfd.use {
+                        try {
+                            tagLib.getAudioFile(pfd.fd, document.uri.toString(), document.displayName.substringBeforeLast(".") ?: "Unknown")?.let { audioFile ->
+                                emit(Pair(audioFile, document))
+                            }
+                        } catch (e: IllegalStateException) {
+                            Log.e("MainActivity", "Failed to get audio file: ", e)
                         }
-                    } catch (e: IllegalStateException) {
-                        Log.e("MainActivity", "Failed to get audio file: ", e)
                     }
                 }
             }
