@@ -38,6 +38,7 @@ class DocumentAdapter : RecyclerView.Adapter<ViewHolder>() {
         holder.trackTextView.text = audioFile.track.toString()
         holder.durationTextView.text = audioFile.duration?.toHms()
         holder.artistTextView.text = audioFile.artist
+        holder.albumArtistTextView.text = audioFile.albumArtist
         holder.albumTextView.text = audioFile.album
         holder.yearTextView.text = audioFile.date
         holder.discTextView.text = audioFile.disc.toString()
@@ -52,6 +53,7 @@ class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
     val trackTextView: TextView = itemView.findViewById(R.id.track)
     val durationTextView: TextView = itemView.findViewById(R.id.duration)
     val artistTextView: TextView = itemView.findViewById(R.id.artist)
+    val albumArtistTextView: TextView = itemView.findViewById(R.id.albumArtist)
     val albumTextView: TextView = itemView.findViewById(R.id.album)
     val yearTextView: TextView = itemView.findViewById(R.id.year)
     val discTextView: TextView = itemView.findViewById(R.id.disc)
