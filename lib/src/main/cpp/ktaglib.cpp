@@ -216,41 +216,31 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_simplecityapps_ktaglib_KTagLib_up
 
             if (title_) {
                 const char *title = env->GetStringUTFChars(title_, 0);
-                TagLib::StringList stringList = TagLib::StringList();
-                stringList.append(title);
-                properties.replace("TITLE", stringList);
+                properties.replace("TITLE",  TagLib::String(title));
                 env->ReleaseStringUTFChars(title_, title);
             }
 
             if (artist_) {
                 const char *artist = env->GetStringUTFChars(artist_, 0);
-                TagLib::StringList stringList = TagLib::StringList();
-                stringList.append(artist);
-                properties.replace("ARTIST", stringList);
+                properties.replace("ARTIST", TagLib::String(artist));
                 env->ReleaseStringUTFChars(artist_, artist);
             }
 
             if (album_) {
                 const char *album = env->GetStringUTFChars(album_, 0);
-                TagLib::StringList stringList = TagLib::StringList();
-                stringList.append(album);
-                properties.replace("ALBUM", stringList);
+                properties.replace("ALBUM", TagLib::String(album));
                 env->ReleaseStringUTFChars(album_, album);
             }
 
             if (albumArtist_) {
                 const char *albumArtist = env->GetStringUTFChars(albumArtist_, 0);
-                TagLib::StringList stringList = TagLib::StringList();
-                stringList.append(albumArtist);
-                properties.replace("ALBUMARTIST", stringList);
+                properties.replace("ALBUMARTIST", TagLib::String(albumArtist));
                 env->ReleaseStringUTFChars(albumArtist_, albumArtist);
             }
 
             if (date_) {
                 const char *date = env->GetStringUTFChars(date_, 0);
-                TagLib::StringList stringList = TagLib::StringList();
-                stringList.append(date);
-                properties.replace("DATE", stringList);
+                properties.replace("DATE", TagLib::String(date));
                 env->ReleaseStringUTFChars(date_, date);
             }
 
@@ -264,9 +254,7 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_simplecityapps_ktaglib_KTagLib_up
                     trackString += std::to_string(trackTotal);
                 }
 
-                TagLib::StringList stringList = TagLib::StringList();
-                stringList.append(trackString);
-                properties.replace("TRACKNUMBER", stringList);
+                properties.replace("TRACKNUMBER",  TagLib::String(trackString));
             }
 
             if (disc_) {
@@ -279,16 +267,12 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_simplecityapps_ktaglib_KTagLib_up
                     discString += std::to_string(discTotal);
                 }
 
-                TagLib::StringList stringList = TagLib::StringList();
-                stringList.append(discString);
-                properties.replace("DISCNUMBER", stringList);
+                properties.replace("DISCNUMBER", TagLib::String(discString));
             }
 
             if (genre_) {
                 const char *genre = env->GetStringUTFChars(genre_, 0);
-                TagLib::StringList stringList = TagLib::StringList();
-                stringList.append(genre);
-                properties.replace("GENRE", stringList);
+                properties.replace("GENRE", TagLib::String(genre));
                 env->ReleaseStringUTFChars(genre_, genre);
             }
 
