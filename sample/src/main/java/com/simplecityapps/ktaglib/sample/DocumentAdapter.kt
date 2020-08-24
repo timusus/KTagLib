@@ -5,7 +5,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
-import com.simplecityapps.ktaglib.AudioFile
 import java.util.concurrent.TimeUnit
 
 class DocumentAdapter : RecyclerView.Adapter<ViewHolder>() {
@@ -67,7 +66,7 @@ class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
 fun Int.toHms(defaultValue: String? = null): String {
 
     if (this == 0 && defaultValue != null) {
-        return defaultValue;
+        return defaultValue
     }
 
     val hours = TimeUnit.MILLISECONDS.toHours(this.toLong())

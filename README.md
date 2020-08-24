@@ -10,20 +10,13 @@ See the sample app for an example of reading tags, using the Storage Access Fram
 
 ## Usage ##
 
-Instantiate KTagLib:
-
-`val tagLib = KTagLib()`
-
 #### Read Tags ####
 
 Read the tags from a file descriptor:
 
-`tagLib.getAudioFile(fd: Int, path: String, name: String)`
+`KTagLib.getMetadata(fd: Int)`
 
-This returns an AudioFile object, representing the id3/Vorbis tags (metadata) of the file located at `FileDescriptor` fd.
-
-Note: Only the `FileDescriptor` (fd) is used to retrieve the tags. The path and name are just metadata.
-
+This returns a HashMap representing the tags (metadata) of the audio file located at `FileDescriptor` fd.
 
 #### Retrieve Artwork ####
 
@@ -31,25 +24,16 @@ Note: Only the `FileDescriptor` (fd) is used to retrieve the tags. The path and 
 
 Returns a `ByteArray` (or null) representing the image data of the largest image found.
 
-
 #### Write Tags ####
 
     fun updateTags(
             fd: Int,
-            title: String?,
-            artist: String?,
-            album: String?,
-            albumArtist: String?,
-            date: String?,
-            track: Int?,
-            trackTotal: Int?,
-            disc: Int?,
-            discTotal: Int?,
-            genre: String?
+            properties : HashMap<String, String>
         ): Boolean
 
-Attempts to write the supplied tags to the file located at `FileDescriptor` 'fd'.
+Attempts to write the tags supplied as a HashMap to the file located at `FileDescriptor` 'fd'.
 
-Note: Null fields are ignored. To clear a tag, pass an empty string.
+Note: All tags passed to properties are replaced in the file. Therefore, only pass fields you want to
+change. To clear a tag, pass an empty string.
 
 Returns true if the tags are successfully updated.
