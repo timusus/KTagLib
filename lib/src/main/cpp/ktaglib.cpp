@@ -71,8 +71,8 @@ extern "C" JNIEXPORT jobject JNICALL Java_com_simplecityapps_ktaglib_KTagLib_get
 
     jobject audioFile = nullptr;
 
-    TagLib::IOStream *stream = new TagLib::FileStream(uniqueFd.get(), true);
-    TagLib::FileRef fileRef(stream);
+    std::unique_ptr<TagLib::IOStream> stream = std::make_unique<TagLib::FileStream>( uniqueFd.get( ), false);
+    TagLib::FileRef fileRef(stream.get());
 
     if (!fileRef.isNull()) {
 
@@ -203,8 +203,8 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_simplecityapps_ktaglib_KTagLib_up
 
     unique_fd uniqueFd = unique_fd(fd_);
 
-    TagLib::IOStream *stream = new TagLib::FileStream(uniqueFd.get(), false);
-    TagLib::FileRef fileRef(stream);
+    std::unique_ptr<TagLib::IOStream> stream = std::make_unique<TagLib::FileStream>( uniqueFd.get( ), false);
+    TagLib::FileRef fileRef(stream.get());
 
     bool saved = false;
 
@@ -308,8 +308,8 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_simplecityapps_ktaglib_KTagLib_
 
     unique_fd uniqueFd = unique_fd(fd_);
 
-    TagLib::IOStream *stream = new TagLib::FileStream(uniqueFd.get(), true);
-    TagLib::FileRef fileRef(stream);
+    std::unique_ptr<TagLib::IOStream> stream = std::make_unique<TagLib::FileStream>( uniqueFd.get( ), false);
+    TagLib::FileRef fileRef(stream.get());
 
     jbyteArray result = nullptr;
 
