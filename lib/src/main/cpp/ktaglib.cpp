@@ -103,8 +103,8 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_simplecityapps_ktaglib_KTagLib_
 
     unique_fd uniqueFd = unique_fd(fd_);
 
-    TagLib::IOStream *stream = new TagLib::FileStream(uniqueFd.get(), true);
-    TagLib::FileRef fileRef(stream);
+    auto stream = std::make_unique<TagLib::FileStream>(uniqueFd.get(), true);
+    TagLib::FileRef fileRef(stream.get());
 
     jbyteArray result = nullptr;
 
@@ -184,14 +184,14 @@ JNIEXPORT jobject JNICALL
 Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, jint file_descriptor) {
     unique_fd uniqueFd = unique_fd(file_descriptor);
 
-    TagLib::IOStream *stream = new TagLib::FileStream(uniqueFd.get(), true);
-    TagLib::FileRef fileRef(stream);
+    auto stream = std::make_unique<TagLib::FileStream>(uniqueFd.get(), true);
+    TagLib::FileRef fileRef(stream.get());
 
     jobject properties = env->NewObject(globalHashMapClass, hashMapInit);
 
     if (fileRef.isValid()) {
         auto taglibProperties = fileRef.properties();
-        for (auto & taglibProperty : taglibProperties)
+        for (auto &taglibProperty : taglibProperties)
             if (!taglibProperty.second.isEmpty()) {
                 jstring key = env->NewStringUTF(taglibProperty.first.toCString(true));
                 jstring value = env->NewStringUTF(taglibProperty.second.front().toCString(true));
@@ -220,8 +220,8 @@ JNIEXPORT jboolean JNICALL
 Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz, jint file_descriptor, jobject properties) {
     unique_fd uniqueFd = unique_fd(file_descriptor);
 
-    TagLib::IOStream *stream = new TagLib::FileStream(uniqueFd.get(), false);
-    TagLib::FileRef fileRef(stream);
+    auto stream = std::make_unique<TagLib::FileStream>(uniqueFd.get(), false);
+    TagLib::FileRef fileRef(stream.get());
 
     jboolean isSuccessful = false;
 
