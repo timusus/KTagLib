@@ -129,7 +129,7 @@ class MainActivity : AppCompatActivity() {
             documents.forEach { document ->
                 contentResolver.openFileDescriptor(document.uri, "r")?.use { pfd ->
                     try {
-                        tagLib.getAudioFile(pfd.fd, document.uri.toString(), document.displayName.substringBeforeLast(".") ?: "Unknown")?.let { audioFile ->
+                        tagLib.getAudioFile(pfd.detachFd(), document.uri.toString(), document.displayName.substringBeforeLast(".") ?: "Unknown")?.let { audioFile ->
                             emit(Pair(audioFile, document))
                         }
                     } catch (e: IllegalStateException) {
