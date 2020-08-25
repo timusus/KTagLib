@@ -10,7 +10,6 @@
 #include <toolkit/tpicture.h>
 #include <toolkit/tpicturemap.h>
 #include <toolkit/tdebuglistener.h>
-#include "unique_fd.h"
 #include <android/log.h>
 
 class DebugListener : public TagLib::DebugListener {
@@ -66,12 +65,11 @@ extern "C" void JNI_OnUnload(JavaVM *vm, void *reserved) {
     TagLib::setDebugListener(nullptr);
 }
 
-extern "C" JNIEXPORT jobject JNICALL Java_com_simplecityapps_ktaglib_KTagLib_getAudioFile(JNIEnv *env, jobject instance, jint fd_, jstring path, jstring fileName) {
-    unique_fd uniqueFd = unique_fd(fd_);
+extern "C" JNIEXPORT jobject JNICALL Java_com_simplecityapps_ktaglib_KTagLib_getAudioFile(JNIEnv *env, jobject instance, jint fd, jstring path, jstring fileName) {
 
     jobject audioFile = nullptr;
 
-    std::unique_ptr<TagLib::IOStream> stream = std::make_unique<TagLib::FileStream>( uniqueFd.get( ), false);
+    std::unique_ptr<TagLib::IOStream> stream = std::make_unique<TagLib::FileStream>( fd, false);
     TagLib::FileRef fileRef(stream.get());
 
     if (!fileRef.isNull()) {
@@ -157,7 +155,7 @@ extern "C" JNIEXPORT jobject JNICALL Java_com_simplecityapps_ktaglib_KTagLib_get
         }
 
         struct stat statbuf{};
-        fstat(uniqueFd.get(), &statbuf);
+        fstat(fd, &statbuf);
         long long lastModified = statbuf.st_mtime * 1000L;
         long long size = statbuf.st_size;
 
@@ -180,15 +178,13 @@ extern "C" JNIEXPORT jobject JNICALL Java_com_simplecityapps_ktaglib_KTagLib_get
                 genre
         );
     }
-
-    uniqueFd.release();
     return audioFile;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL Java_com_simplecityapps_ktaglib_KTagLib_updateTags(
         JNIEnv *env,
         jobject instance,
-        jint fd_,
+        jint fd,
         jstring title_,
         jstring artist_,
         jstring album_,
@@ -200,10 +196,7 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_simplecityapps_ktaglib_KTagLib_up
         jobject discTotal_,
         jstring genre_
 ) {
-
-    unique_fd uniqueFd = unique_fd(fd_);
-
-    std::unique_ptr<TagLib::IOStream> stream = std::make_unique<TagLib::FileStream>( uniqueFd.get( ), false);
+    std::unique_ptr<TagLib::IOStream> stream = std::make_unique<TagLib::FileStream>( fd, false);
     TagLib::FileRef fileRef(stream.get());
 
     bool saved = false;
@@ -280,19 +273,13 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_simplecityapps_ktaglib_KTagLib_up
                 tag->setProperties(properties);
             }
         }
-
         saved = fileRef.save();
     }
-
-    uniqueFd.release();
     return saved;
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jobject instance, jint fd_) {
-
-    unique_fd uniqueFd = unique_fd(fd_);
-
-    std::unique_ptr<TagLib::IOStream> stream = std::make_unique<TagLib::FileStream>( uniqueFd.get( ), false);
+extern "C" JNIEXPORT jbyteArray JNICALL Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jobject instance, jint fd) {
+    std::unique_ptr<TagLib::IOStream> stream = std::make_unique<TagLib::FileStream>( fd, false);
     TagLib::FileRef fileRef(stream.get());
 
     jbyteArray result = nullptr;
@@ -350,7 +337,5 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_simplecityapps_ktaglib_KTagLib_
             result = arr;
         }
     }
-
-    uniqueFd.release();
     return result;
 }
