@@ -26,6 +26,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var documentAdapter: DocumentAdapter
 
+
     // Lifecycle
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -126,7 +127,7 @@ class MainActivity : AppCompatActivity() {
                     try {
                         emit(
                             Pair(
-                                KTagLib.getAudioFile(pfd.detachFd(), document.uri.toString(), document.displayName.substringBeforeLast(".")),
+                                AudioFile.getAudioFile(pfd.detachFd(), document.uri.toString(), document.displayName.substringBeforeLast(".")),
                                 document
                             )
                         )

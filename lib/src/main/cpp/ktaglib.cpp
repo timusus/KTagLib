@@ -16,17 +16,7 @@
 #include <toolkit/tmap.h>
 #include <toolkit/tpicturemap.h>
 #include <toolkit/tdebuglistener.h>
-
-#include "unique_fd.h"
-
-
-class DebugListener : public TagLib::DebugListener {
-    void printMessage(const TagLib::String &msg) override {
-        __android_log_print(ANDROID_LOG_VERBOSE, "kTagLib", "%s", msg.toCString(true));
-    }
-};
-
-DebugListener listener;
+#include <android/log.h>
 
 jclass globalHashMapClass;
 jclass globalSetClass;
@@ -41,6 +31,25 @@ jmethodID iteratorHasNext;
 jmethodID iteratorNextEntry;
 jmethodID getPropertyKey;
 jmethodID getPropertyValue;
+
+class DebugListener : public TagLib::DebugListener {
+    void printMessage(const TagLib::String &msg) override {
+        __android_log_print(ANDROID_LOG_VERBOSE, "kTagLib", "%s", msg.toCString(true));
+    }
+};
+
+DebugListener listener;
+
+static const char *convertJStringToCString(JNIEnv *env, jstring str) {
+    return env->GetStringUTFChars(str, JNI_FALSE);
+}
+
+static void addIntegerProperty(JNIEnv *env, jobject properties, const char *key, long long value) {
+    std::string string_value = std::to_string(value);
+    jstring jKey = env->NewStringUTF(key);
+    jstring jValue = env->NewStringUTF(string_value.c_str());
+    env->CallObjectMethod(properties, addProperty, jKey, jValue);
+}
 
 extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     JNIEnv *env;
@@ -65,22 +74,16 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     env->DeleteLocalRef(setClass);
 
     hashMapInit = env->GetMethodID(globalHashMapClass, "<init>", "()V");
-    addProperty = env->GetMethodID(globalHashMapClass, "put",
-            "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
-    getEntrySet = env->GetMethodID(globalHashMapClass, "entrySet",
-            "()Ljava/util/Set;");
+    addProperty = env->GetMethodID(globalHashMapClass, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+    getEntrySet = env->GetMethodID(globalHashMapClass, "entrySet", "()Ljava/util/Set;");
 
-    getIterator = env->GetMethodID(globalSetClass, "iterator",
-            "()Ljava/util/Iterator;");
+    getIterator = env->GetMethodID(globalSetClass, "iterator", "()Ljava/util/Iterator;");
 
     iteratorHasNext = env->GetMethodID(globalIteratorClass, "hasNext", "()Z");
-    iteratorNextEntry = env->GetMethodID(globalIteratorClass, "next",
-            "()Ljava/lang/Object;");
+    iteratorNextEntry = env->GetMethodID(globalIteratorClass, "next", "()Ljava/lang/Object;");
 
-    getPropertyKey = env->GetMethodID(globalMapEntryClass, "getKey",
-            "()Ljava/lang/Object;");
-    getPropertyValue = env->GetMethodID(globalMapEntryClass, "getValue",
-            "()Ljava/lang/Object;");
+    getPropertyKey = env->GetMethodID(globalMapEntryClass, "getKey", "()Ljava/lang/Object;");
+    getPropertyValue = env->GetMethodID(globalMapEntryClass, "getValue", "()Ljava/lang/Object;");
 
     TagLib::setDebugListener(&listener);
 
@@ -99,11 +102,74 @@ extern "C" void JNI_OnUnload(JavaVM *vm, void *reserved) {
     TagLib::setDebugListener(nullptr);
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jclass clazz, jint fd_) {
+extern "C"
+JNIEXPORT jobject JNICALL
+Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, jint file_descriptor) {
 
-    unique_fd uniqueFd = unique_fd(fd_);
+    auto stream = std::make_unique<TagLib::FileStream>(file_descriptor, true);
+    TagLib::FileRef fileRef(stream.get());
 
-    auto stream = std::make_unique<TagLib::FileStream>(uniqueFd.get(), true);
+    jobject properties = env->NewObject(globalHashMapClass, hashMapInit);
+
+    if (fileRef.isValid()) {
+        auto taglibProperties = fileRef.properties();
+        for (auto &taglibProperty : taglibProperties)
+            if (!taglibProperty.second.isEmpty()) {
+                jstring key = env->NewStringUTF(taglibProperty.first.toCString(true));
+                jstring value = env->NewStringUTF(taglibProperty.second.front().toCString(true));
+                env->CallObjectMethod(properties, addProperty, key, value);
+            }
+
+        auto audioProperties = fileRef.audioProperties();
+        addIntegerProperty(env, properties, "BITRATE", audioProperties->bitrate());
+        addIntegerProperty(env, properties, "CHANNELS", audioProperties->channels());
+        addIntegerProperty(env, properties, "DURATION", audioProperties->lengthInMilliseconds());
+        addIntegerProperty(env, properties, "SAMPLERATE", audioProperties->sampleRate());
+
+        struct stat statbuf{};
+        fstat(file_descriptor, &statbuf);
+        addIntegerProperty(env, properties, "LAST_MODIFIED", statbuf.st_mtime * 1000L);
+        addIntegerProperty(env, properties, "SIZE", statbuf.st_size);
+    }
+
+    return properties;
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz, jint file_descriptor, jobject properties) {
+
+    auto stream = std::make_unique<TagLib::FileStream>(file_descriptor, false);
+    TagLib::FileRef fileRef(stream.get());
+
+    jboolean isSuccessful = false;
+
+    if (fileRef.isValid()) {
+        TagLib::PropertyMap taglibProperties = fileRef.properties();
+        jobject entrySet = env->CallObjectMethod(properties, getEntrySet);
+        jobject iterator = env->CallObjectMethod(entrySet, getIterator);
+
+        while (env->CallBooleanMethod(iterator, iteratorHasNext)) {
+            jobject entry = env->CallObjectMethod(iterator, iteratorNextEntry);
+            auto key = (jstring) env->CallObjectMethod(entry, getPropertyKey);
+            auto value = (jstring) env->CallObjectMethod(entry, getPropertyValue);
+            taglibProperties.replace(
+                    TagLib::String(convertJStringToCString(env, key)),
+                    TagLib::String(convertJStringToCString(env, value))
+            );
+        }
+
+        fileRef.setProperties(taglibProperties);
+        isSuccessful = fileRef.save();
+    }
+
+    return isSuccessful;
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jclass clazz, jint fd) {
+
+    auto stream = std::make_unique<TagLib::FileStream>(fd, true);
     TagLib::FileRef fileRef(stream.get());
 
     jbyteArray result = nullptr;
@@ -162,88 +228,5 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_simplecityapps_ktaglib_KTagLib_
         }
     }
 
-    uniqueFd.release();
     return result;
-}
-
-static const char* convertJStringToCString(JNIEnv *env, jstring str) {
-    jboolean is_copy;
-    const char *CString = env->GetStringUTFChars(str, &is_copy);
-    return CString;
-}
-
-static void addIntegerProperty(JNIEnv *env, jobject properties, const char* key, long long value) {
-    std::string string_value = std::to_string(value);
-    jstring jKey = env->NewStringUTF(key);
-    jstring jValue = env->NewStringUTF(string_value.c_str());
-    env->CallObjectMethod(properties, addProperty, jKey, jValue);
-}
-
-extern "C"
-JNIEXPORT jobject JNICALL
-Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, jint file_descriptor) {
-    unique_fd uniqueFd = unique_fd(file_descriptor);
-
-    auto stream = std::make_unique<TagLib::FileStream>(uniqueFd.get(), true);
-    TagLib::FileRef fileRef(stream.get());
-
-    jobject properties = env->NewObject(globalHashMapClass, hashMapInit);
-
-    if (fileRef.isValid()) {
-        auto taglibProperties = fileRef.properties();
-        for (auto &taglibProperty : taglibProperties)
-            if (!taglibProperty.second.isEmpty()) {
-                jstring key = env->NewStringUTF(taglibProperty.first.toCString(true));
-                jstring value = env->NewStringUTF(taglibProperty.second.front().toCString(true));
-                env->CallObjectMethod(properties, addProperty, key, value);
-            }
-
-        auto audioProperties = fileRef.audioProperties();
-        addIntegerProperty(env, properties, "BITRATE", audioProperties->bitrate());
-        addIntegerProperty(env, properties, "CHANNELS", audioProperties->channels());
-        addIntegerProperty(env, properties, "DURATION", audioProperties->lengthInMilliseconds());
-        addIntegerProperty(env, properties, "SAMPLERATE", audioProperties->sampleRate());
-
-        struct stat statbuf{};
-        fstat(uniqueFd.get(), &statbuf);
-        addIntegerProperty(env, properties, "LAST_MODIFIED", statbuf.st_mtime * 1000L);
-        addIntegerProperty(env, properties, "SIZE", statbuf.st_size);
-    }
-
-    uniqueFd.release();
-
-    return properties;
-}
-
-extern "C"
-JNIEXPORT jboolean JNICALL
-Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz, jint file_descriptor, jobject properties) {
-    unique_fd uniqueFd = unique_fd(file_descriptor);
-
-    auto stream = std::make_unique<TagLib::FileStream>(uniqueFd.get(), false);
-    TagLib::FileRef fileRef(stream.get());
-
-    jboolean isSuccessful = false;
-
-    if (fileRef.isValid()) {
-        TagLib::PropertyMap taglibProperties = fileRef.properties();
-        jobject entrySet = env->CallObjectMethod(properties, getEntrySet);
-        jobject iterator = env->CallObjectMethod(entrySet, getIterator);
-
-        while (env->CallBooleanMethod(iterator, iteratorHasNext)) {
-            jobject entry = env->CallObjectMethod(iterator, iteratorNextEntry);
-            auto key = (jstring) env->CallObjectMethod(entry, getPropertyKey);
-            auto value = (jstring) env->CallObjectMethod(entry, getPropertyValue);
-            taglibProperties.replace(
-                    TagLib::String(convertJStringToCString(env, key)),
-                    TagLib::String(convertJStringToCString(env, value)));
-        }
-
-        fileRef.setProperties(taglibProperties);
-        isSuccessful = fileRef.save();
-    }
-
-    uniqueFd.release();
-
-    return isSuccessful;
 }
