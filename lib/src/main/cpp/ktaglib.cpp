@@ -167,9 +167,9 @@ Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz,
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL
-Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jclass clazz, jint fd) {
+Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jclass clazz, jint file_descriptor) {
 
-    auto stream = std::make_unique<TagLib::FileStream>(fd, true);
+    auto stream = std::make_unique<TagLib::FileStream>(file_descriptor, true);
     TagLib::FileRef fileRef(stream.get());
 
     jbyteArray result = nullptr;
