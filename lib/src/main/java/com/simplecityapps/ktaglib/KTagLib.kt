@@ -31,10 +31,10 @@ object KTagLib {
     external fun writeMetadata(fileDescriptor: Int, properties: HashMap<String, String>): Boolean
 
     /**
-     * Returns a [ByteArray] representing the artwork for the file located at File Descriptor [fd], or null if no artwork can be found.
+     * Returns a [ByteArray] representing the artwork for the file located at File Descriptor [fileDescriptor], or null if no artwork can be found.
      *
-     * @param fd File descriptor
+     * @param fileDescriptor File descriptor
      */
     @JvmStatic
-    external fun getArtwork(fd: Int): ByteArray?
+    external fun getArtwork(fileDescriptor: Int): ByteArray?
 }
