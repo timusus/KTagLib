@@ -3,7 +3,22 @@
 Kotlin bindings for [TagLib](https://github.com/taglib/taglib)
 
 Gradle:
-`implementation("com.github.timusus:KTagLib:master-SNAPSHOT")`
+
+Step 1. Add the Jitpack repository to the root build.gradle
+
+	allprojects {
+		repositories {
+			...
+			maven { url 'https://jitpack.io' }
+		}
+	}
+
+Step 2. Add the dependency
+
+	dependencies {
+	    implementation("com.github.timusus:KTagLib:release-SNAPSHOT") // or kTagLib:1.0
+	}
+
 
 See the sample app for an example of reading tags, using the Storage Access Framework.
 
@@ -14,9 +29,9 @@ See the sample app for an example of reading tags, using the Storage Access Fram
 
 Read the tags from a file descriptor:
 
-`KTagLib.getMetadata(fd: Int)`
+`KTagLib.getMetadata(fileDescriptor: Int)`
 
-This returns a HashMap representing the tags (metadata) of the audio file located at `FileDescriptor` fd.
+This returns a HashMap representing the tags (metadata) of the audio file located at `fileDescriptor`.
 
 #### Retrieve Artwork ####
 
@@ -26,14 +41,13 @@ Returns a `ByteArray` (or null) representing the image data of the largest image
 
 #### Write Tags ####
 
-    fun updateTags(
-            fd: Int,
-            properties : HashMap<String, String>
-        ): Boolean
+    fun writeMetadata(
+        fileDescriptor: Int,
+        properties : HashMap<String, String>
+    ): Boolean
 
-Attempts to write the tags supplied as a HashMap to the file located at `FileDescriptor` 'fd'.
+Attempts to write the tags supplied as a HashMap to the file located at `fileDescriptor`.
 
-Note: All tags passed to properties are replaced in the file. Therefore, only pass fields you want to
-change. To clear a tag, pass an empty string.
+Note: All tags passed to properties are replaced in the file. Therefore, only pass fields you want to change. To clear a tag, pass an empty string.
 
 Returns true if the tags are successfully updated.
