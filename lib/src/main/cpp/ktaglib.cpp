@@ -18,19 +18,31 @@
 #include <toolkit/tdebuglistener.h>
 #include <android/log.h>
 
-jclass globalHashMapClass;
-jclass globalSetClass;
-jclass globalIteratorClass;
-jclass globalMapEntryClass;
+jclass globalMetadataClass;
+jmethodID metadataInit;
 
+jclass globalAudioPropertiesClass;
+jmethodID audioPropertiesInit;
+
+jclass globalHashMapClass;
 jmethodID hashMapInit;
+
+jclass globalMapEntryClass;
+jmethodID getPropertyKey;
+jmethodID getPropertyValue;
 jmethodID addProperty;
 jmethodID getEntrySet;
+
+jclass globalSetClass;
+jclass globalIteratorClass;
 jmethodID getIterator;
 jmethodID iteratorHasNext;
 jmethodID iteratorNextEntry;
-jmethodID getPropertyKey;
-jmethodID getPropertyValue;
+
+jclass globalArrayListClass;
+jmethodID arrayListInit;
+jmethodID addListElement;
+
 
 class DebugListener : public TagLib::DebugListener {
     void printMessage(const TagLib::String &msg) override {
@@ -57,35 +69,48 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
         return JNI_ERR;
     }
 
-    jclass hashMapClass = env->FindClass("java/util/HashMap");
-    globalHashMapClass = reinterpret_cast<jclass>(env->NewGlobalRef(hashMapClass));
-    env->DeleteLocalRef(hashMapClass);
+    jclass metadataClass = env->FindClass("com/simplecityapps/ktaglib/Metadata");
+    globalMetadataClass = reinterpret_cast<jclass>(env->NewGlobalRef(metadataClass));
+    env->DeleteLocalRef(metadataClass);
+    metadataInit = env->GetMethodID(globalMetadataClass, "<init>", "(Ljava/util/Map;Lcom/simplecityapps/ktaglib/AudioProperties;)V");
 
-    jclass iteratorClass = env->FindClass("java/util/Iterator");
-    globalIteratorClass = reinterpret_cast<jclass>(env->NewGlobalRef(iteratorClass));
-    env->DeleteLocalRef(iteratorClass);
-
-    jclass mapEntryClass = env->FindClass("java/util/Map$Entry");
-    globalMapEntryClass = reinterpret_cast<jclass>(env->NewGlobalRef(mapEntryClass));
-    env->DeleteLocalRef(mapEntryClass);
+    jclass audioPropertiesClass = env->FindClass("com/simplecityapps/ktaglib/AudioProperties");
+    globalAudioPropertiesClass = reinterpret_cast<jclass>(env->NewGlobalRef(audioPropertiesClass));
+    env->DeleteLocalRef(audioPropertiesClass);
+    audioPropertiesInit = env->GetMethodID(globalAudioPropertiesClass, "<init>", "(IIII)V");
 
     jclass setClass = env->FindClass("java/util/Set");
     globalSetClass = reinterpret_cast<jclass>(env->NewGlobalRef(setClass));
     env->DeleteLocalRef(setClass);
 
+    jclass iteratorClass = env->FindClass("java/util/Iterator");
+    globalIteratorClass = reinterpret_cast<jclass>(env->NewGlobalRef(iteratorClass));
+    env->DeleteLocalRef(iteratorClass);
+
+    getIterator = env->GetMethodID(globalSetClass, "iterator", "()Ljava/util/Iterator;");
+    iteratorHasNext = env->GetMethodID(globalIteratorClass, "hasNext", "()Z");
+    iteratorNextEntry = env->GetMethodID(globalIteratorClass, "next", "()Ljava/lang/Object;");
+
+    jclass hashMapClass = env->FindClass("java/util/HashMap");
+    globalHashMapClass = reinterpret_cast<jclass>(env->NewGlobalRef(hashMapClass));
+    env->DeleteLocalRef(hashMapClass);
     hashMapInit = env->GetMethodID(globalHashMapClass, "<init>", "()V");
     addProperty = env->GetMethodID(globalHashMapClass, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
     getEntrySet = env->GetMethodID(globalHashMapClass, "entrySet", "()Ljava/util/Set;");
 
-    getIterator = env->GetMethodID(globalSetClass, "iterator", "()Ljava/util/Iterator;");
-
-    iteratorHasNext = env->GetMethodID(globalIteratorClass, "hasNext", "()Z");
-    iteratorNextEntry = env->GetMethodID(globalIteratorClass, "next", "()Ljava/lang/Object;");
-
+    jclass mapEntryClass = env->FindClass("java/util/Map$Entry");
+    globalMapEntryClass = reinterpret_cast<jclass>(env->NewGlobalRef(mapEntryClass));
+    env->DeleteLocalRef(mapEntryClass);
     getPropertyKey = env->GetMethodID(globalMapEntryClass, "getKey", "()Ljava/lang/Object;");
     getPropertyValue = env->GetMethodID(globalMapEntryClass, "getValue", "()Ljava/lang/Object;");
 
-    TagLib::setDebugListener(&listener);
+    jclass arrayListClass = env->FindClass("java/util/ArrayList");
+    globalArrayListClass = reinterpret_cast<jclass>(env->NewGlobalRef(arrayListClass));
+    env->DeleteLocalRef(arrayListClass);
+    arrayListInit = env->GetMethodID(globalArrayListClass, "<init>", "(I)V");
+    addListElement = env->GetMethodID(globalArrayListClass, "add", "(Ljava/lang/Object;)Z");
+
+    TagLib::setDebugListener(&listener);;
 
     return JNI_VERSION_1_6;
 }
@@ -109,30 +134,31 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
     auto stream = std::make_unique<TagLib::FileStream>(file_descriptor, true);
     TagLib::FileRef fileRef(stream.get());
 
-    jobject properties = env->NewObject(globalHashMapClass, hashMapInit);
+    jobject jPropertyMap = env->NewObject(globalHashMapClass, hashMapInit);
 
     if (fileRef.isValid()) {
         auto taglibProperties = fileRef.properties();
-        for (auto &taglibProperty : taglibProperties)
-            if (!taglibProperty.second.isEmpty()) {
-                jstring key = env->NewStringUTF(taglibProperty.first.toCString(true));
-                jstring value = env->NewStringUTF(taglibProperty.second.front().toCString(true));
-                env->CallObjectMethod(properties, addProperty, key, value);
+        for (auto &taglibProperty : taglibProperties) {
+            jstring key = env->NewStringUTF(taglibProperty.first.toCString(true));
+            jobject values = env->NewObject(globalArrayListClass, arrayListInit, (jint) 0);
+            for (auto &value : taglibProperty.second) {
+                env->CallBooleanMethod(values, addListElement, env->NewStringUTF(value.toCString(true)));
             }
-
-        auto audioProperties = fileRef.audioProperties();
-        addIntegerProperty(env, properties, "BITRATE", audioProperties->bitrate());
-        addIntegerProperty(env, properties, "CHANNELS", audioProperties->channels());
-        addIntegerProperty(env, properties, "DURATION", audioProperties->lengthInMilliseconds());
-        addIntegerProperty(env, properties, "SAMPLERATE", audioProperties->sampleRate());
-
-        struct stat statbuf{};
-        fstat(file_descriptor, &statbuf);
-        addIntegerProperty(env, properties, "LAST_MODIFIED", statbuf.st_mtime * 1000L);
-        addIntegerProperty(env, properties, "SIZE", statbuf.st_size);
+            env->CallObjectMethod(jPropertyMap, addProperty, key, values);
+        }
     }
 
-    return properties;
+    auto audioProperties = fileRef.audioProperties();
+    jobject jAudioProperties = env->NewObject(
+            globalAudioPropertiesClass,
+            audioPropertiesInit,
+            (jint) audioProperties->lengthInMilliseconds(),
+            (jint) audioProperties->bitrate(),
+            (jint) audioProperties->sampleRate(),
+            (jint) audioProperties->channels()
+    );
+
+    return env->NewObject(globalMetadataClass, metadataInit, jPropertyMap, jAudioProperties);
 }
 
 extern "C"

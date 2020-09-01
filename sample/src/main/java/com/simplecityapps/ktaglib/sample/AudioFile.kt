@@ -35,23 +35,22 @@ data class AudioFile(
          */
         @JvmStatic
         fun getAudioFile(fileDescriptor: Int, filePath: String, fileName: String): AudioFile {
-            val properties = KTagLib.getMetadata(fileDescriptor)
-            Log.d("Metadata Properties", properties.toString())
+            val metadata = KTagLib.getMetadata(fileDescriptor)
             return AudioFile(
                 filePath,
-                properties["SIZE"]?.toLong() ?: 0,
-                properties["LAST_MODIFIED"]?.toLong() ?: 0,
-                properties["TITLE"],
-                properties["ALBUMARTIST"],
-                properties["ARTIST"],
-                properties["ALBUM"],
-                properties["TRACK"]?.toInt(),
-                properties["TRACKTOTAL"]?.toInt(),
-                properties["DISC"]?.toInt(),
-                properties["DISCTOTAL"]?.toInt(),
-                properties["DURATION"]?.toInt(),
-                properties["DATE"],
-                properties["GENRE"]
+                0,
+                0,
+                metadata.propertyMap["TITLE"]?.firstOrNull() ?: fileName,
+                metadata.propertyMap["ALBUMARTIST"]?.firstOrNull(),
+                metadata.propertyMap["ARTIST"]?.firstOrNull(),
+                metadata.propertyMap["ALBUM"]?.firstOrNull(),
+                metadata.propertyMap["TRACKNUMBER"]?.firstOrNull()?.substringBefore('/')?.toIntOrNull(),
+                metadata.propertyMap["TRACKNUMBER"]?.firstOrNull()?.substringAfter('/', "")?.toIntOrNull(),
+                metadata.propertyMap["DISCNUMBER"]?.firstOrNull()?.substringBefore('/')?.toIntOrNull(),
+                metadata.propertyMap["DISCNUMBER"]?.firstOrNull()?.substringAfter('/', "")?.toIntOrNull(),
+                metadata.audioProperties.duration,
+                metadata.propertyMap["DATE"]?.firstOrNull(),
+                metadata.propertyMap["GENRE"]?.firstOrNull()
             )
         }
     }
