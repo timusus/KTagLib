@@ -10,7 +10,6 @@ import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.RecyclerView
-import com.simplecityapps.ktaglib.KTagLib
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
@@ -92,7 +91,9 @@ class MainActivity : AppCompatActivity() {
             arrayOf(
                 DocumentsContract.Document.COLUMN_DOCUMENT_ID,
                 DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-                DocumentsContract.Document.COLUMN_MIME_TYPE
+                DocumentsContract.Document.COLUMN_MIME_TYPE,
+                DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+                DocumentsContract.Document.COLUMN_SIZE
             ),
             null,
             null,
@@ -103,6 +104,8 @@ class MainActivity : AppCompatActivity() {
                     val documentId = cursor.getString(cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID))
                     val displayName = cursor.getString(cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME))
                     val mimeType = cursor.getString(cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE))
+                    val lastModified = cursor.getLong(cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED))
+                    val size = cursor.getLong(cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE))
                     val childDocumentUri = DocumentsContract.buildDocumentUriUsingTree(documentUri, documentId)
                     if (mimeType == DocumentsContract.Document.MIME_TYPE_DIR) {
                         traverse(treeUri, DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, documentId), documents)
@@ -111,7 +114,7 @@ class MainActivity : AppCompatActivity() {
                             arrayOf("mp3", "3gp", "mp4", "m4a", "m4b", "aac", "ts", "flac", "mid", "xmf", "mxmf", "midi", "rtttl", "rtx", "ota", "imy", "ogg", "mkv", "wav", "opus")
                                 .contains(displayName.substringAfterLast('.'))
                         ) {
-                            documents.add(Document(childDocumentUri, documentId, displayName, mimeType))
+                            documents.add(Document(childDocumentUri, documentId, displayName, mimeType, lastModified, size))
                         }
                     }
                 }
@@ -128,7 +131,7 @@ class MainActivity : AppCompatActivity() {
                     try {
                         emit(
                             Pair(
-                                AudioFile.getAudioFile(pfd.detachFd(), document.uri.toString(), document.displayName.substringBeforeLast(".")),
+                                AudioFile.getAudioFile(pfd.detachFd(), document.uri.toString(), document.displayName.substringBeforeLast("."), document.lastModified, document.size),
                                 document
                             )
                         )

@@ -1,7 +1,7 @@
 package com.simplecityapps.ktaglib.sample
 
-import android.util.Log
 import com.simplecityapps.ktaglib.KTagLib
+import java.util.*
 
 /**
  * A data model with some basic fields for representing various metadata fields of an audio file.
@@ -10,7 +10,7 @@ import com.simplecityapps.ktaglib.KTagLib
 data class AudioFile(
     val path: String,
     var size: Long,
-    var lastModified: Long,
+    var lastModified: Date,
     val title: String?,
     val albumArtist: String?,
     val artist: String?,
@@ -34,12 +34,12 @@ data class AudioFile(
          * @return AudioFile with fields populated from properties of the desired file
          */
         @JvmStatic
-        fun getAudioFile(fileDescriptor: Int, filePath: String, fileName: String): AudioFile {
+        fun getAudioFile(fileDescriptor: Int, filePath: String, fileName: String, lastModified: Long, size: Long): AudioFile {
             val metadata = KTagLib.getMetadata(fileDescriptor)
             return AudioFile(
                 filePath,
-                0,
-                0,
+                size,
+                Date(lastModified),
                 metadata.propertyMap["TITLE"]?.firstOrNull() ?: fileName,
                 metadata.propertyMap["ALBUMARTIST"]?.firstOrNull(),
                 metadata.propertyMap["ARTIST"]?.firstOrNull(),
