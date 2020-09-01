@@ -16,7 +16,7 @@ Step 1. Add the Jitpack repository to the root build.gradle
 Step 2. Add the dependency
 
 	dependencies {
-	    implementation("com.github.timusus:KTagLib:release-SNAPSHOT") // or kTagLib:1.0
+	    implementation("com.github.timusus:KTagLib:release-SNAPSHOT") // or kTagLib:1.1
 	}
 
 
