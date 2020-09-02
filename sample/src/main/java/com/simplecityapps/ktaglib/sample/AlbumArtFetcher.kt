@@ -21,7 +21,8 @@ class AlbumArtFetcher(
             context.contentResolver.openFileDescriptor(Uri.parse(model.path), "r")?.use {
                 val artwork = KTagLib.getArtwork(it.fd)
                 if (artwork != null) {
-                    callback.onDataReady(ByteArrayInputStream(artwork))
+                    stream = ByteArrayInputStream(artwork)
+                    callback.onDataReady(stream)
                 } else {
                     callback.onLoadFailed(FileNotFoundException("No album art found"))
                 }
