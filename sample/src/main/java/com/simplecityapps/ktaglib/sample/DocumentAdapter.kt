@@ -3,6 +3,7 @@ package com.simplecityapps.ktaglib.sample
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import java.util.concurrent.TimeUnit
@@ -31,7 +32,10 @@ class DocumentAdapter : RecyclerView.Adapter<ViewHolder>() {
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val (audioFile, document) = data[position]
-
+        
+        GlideApp.with(holder.albumArt)
+            .load(audioFile)
+            .into(holder.albumArt)
         holder.documentNameTextView.text = document.displayName
         holder.titleTextView.text = audioFile.title
         holder.trackTextView.text = audioFile.track.toString()
@@ -47,6 +51,7 @@ class DocumentAdapter : RecyclerView.Adapter<ViewHolder>() {
 }
 
 class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+    val albumArt: ImageView = itemView.findViewById(R.id.albumArt)
     val documentNameTextView: TextView = itemView.findViewById(R.id.documentName)
     val titleTextView: TextView = itemView.findViewById(R.id.title)
     val trackTextView: TextView = itemView.findViewById(R.id.track)
