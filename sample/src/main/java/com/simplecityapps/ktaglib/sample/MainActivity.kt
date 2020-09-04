@@ -124,15 +124,15 @@ class MainActivity : AppCompatActivity() {
         return documents
     }
 
-    private fun getTags(documents: List<Document>): Flow<Pair<AudioFile, Document>> {
+    private fun getTags(documents: List<Document>): Flow<Pair<Document, AudioFile?>> {
         return flow {
             documents.forEach { document ->
                 contentResolver.openFileDescriptor(document.uri, "r")?.use { pfd ->
                     try {
                         emit(
                             Pair(
-                                AudioFile.getAudioFile(pfd.detachFd(), document.uri.toString(), document.displayName.substringBeforeLast("."), document.lastModified, document.size),
-                                document
+                                document,
+                                AudioFile.getAudioFile(pfd.detachFd(), document.uri.toString(), document.displayName.substringBeforeLast("."), document.lastModified, document.size)
                             )
                         )
                     } catch (e: IllegalStateException) {

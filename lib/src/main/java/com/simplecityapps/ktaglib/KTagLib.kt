@@ -13,7 +13,7 @@ object KTagLib {
      * @return [HashMap] of metadata and other file properties
      */
     @JvmStatic
-    external fun getMetadata(fileDescriptor: Int): Metadata
+    external fun getMetadata(fileDescriptor: Int): Metadata?
 
     /**
      * Returns true if the tags are successfully written to the file associated with the file descriptor.

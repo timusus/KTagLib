@@ -35,7 +35,7 @@ This returns a HashMap representing the tags (metadata) of the audio file locate
 
 #### Retrieve Artwork ####
 
-`getArtwork(fd: Int)`
+`getArtwork(fileDescriptor: Int)`
 
 Returns a `ByteArray` (or null) representing the image data of the largest image found.
 

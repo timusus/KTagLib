@@ -25,33 +25,31 @@ data class AudioFile(
 ) {
     companion object {
         /**
-         * Returns an [AudioFile] with fields populated by invoking [KTagLib.getMetadata] on
-         * [fileDescriptor].
-         *
          * @param fileDescriptor associated with the file whose properties are to be retrieved
          * @param filePath path to the file
          * @param fileName name of the file
-         * @return AudioFile with fields populated from properties of the desired file
+         * @return an AudioFile populated with various metadata retrieved from the tags of the file located at fileDescriptor, or null if metadata can't be retrieved
          */
         @JvmStatic
-        fun getAudioFile(fileDescriptor: Int, filePath: String, fileName: String, lastModified: Long, size: Long): AudioFile {
-            val metadata = KTagLib.getMetadata(fileDescriptor)
-            return AudioFile(
-                filePath,
-                size,
-                Date(lastModified),
-                metadata.propertyMap["TITLE"]?.firstOrNull() ?: fileName,
-                metadata.propertyMap["ALBUMARTIST"]?.firstOrNull(),
-                metadata.propertyMap["ARTIST"]?.firstOrNull(),
-                metadata.propertyMap["ALBUM"]?.firstOrNull(),
-                metadata.propertyMap["TRACKNUMBER"]?.firstOrNull()?.substringBefore('/')?.toIntOrNull(),
-                metadata.propertyMap["TRACKNUMBER"]?.firstOrNull()?.substringAfter('/', "")?.toIntOrNull(),
-                metadata.propertyMap["DISCNUMBER"]?.firstOrNull()?.substringBefore('/')?.toIntOrNull(),
-                metadata.propertyMap["DISCNUMBER"]?.firstOrNull()?.substringAfter('/', "")?.toIntOrNull(),
-                metadata.audioProperties.duration,
-                metadata.propertyMap["DATE"]?.firstOrNull(),
-                metadata.propertyMap["GENRE"]?.firstOrNull()
-            )
+        fun getAudioFile(fileDescriptor: Int, filePath: String, fileName: String, lastModified: Long, size: Long): AudioFile? {
+            return KTagLib.getMetadata(fileDescriptor)?.let { metadata ->
+                AudioFile(
+                    filePath,
+                    size,
+                    Date(lastModified),
+                    metadata.propertyMap["TITLE"]?.firstOrNull() ?: fileName,
+                    metadata.propertyMap["ALBUMARTIST"]?.firstOrNull(),
+                    metadata.propertyMap["ARTIST"]?.firstOrNull(),
+                    metadata.propertyMap["ALBUM"]?.firstOrNull(),
+                    metadata.propertyMap["TRACKNUMBER"]?.firstOrNull()?.substringBefore('/')?.toIntOrNull(),
+                    metadata.propertyMap["TRACKNUMBER"]?.firstOrNull()?.substringAfter('/', "")?.toIntOrNull(),
+                    metadata.propertyMap["DISCNUMBER"]?.firstOrNull()?.substringBefore('/')?.toIntOrNull(),
+                    metadata.propertyMap["DISCNUMBER"]?.firstOrNull()?.substringAfter('/', "")?.toIntOrNull(),
+                    metadata.audioProperties?.duration,
+                    metadata.propertyMap["DATE"]?.firstOrNull(),
+                    metadata.propertyMap["GENRE"]?.firstOrNull()
+                )
+            }
         }
     }
 }

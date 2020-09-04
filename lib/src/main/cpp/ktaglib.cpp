@@ -119,10 +119,12 @@ extern "C" void JNI_OnUnload(JavaVM *vm, void *reserved) {
     JNIEnv *env;
     vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
 
+    env->DeleteGlobalRef(globalMetadataClass);
+    env->DeleteGlobalRef(globalAudioPropertiesClass);
     env->DeleteGlobalRef(globalHashMapClass);
     env->DeleteGlobalRef(globalMapEntryClass);
     env->DeleteGlobalRef(globalIteratorClass);
-    env->DeleteGlobalRef(globalSetClass);
+    env->DeleteGlobalRef(globalArrayListClass);
 
     TagLib::setDebugListener(nullptr);
 }
@@ -134,9 +136,9 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
     auto stream = std::make_unique<TagLib::FileStream>(file_descriptor, true);
     TagLib::FileRef fileRef(stream.get());
 
-    jobject jPropertyMap = env->NewObject(globalHashMapClass, hashMapInit);
-
     if (fileRef.isValid()) {
+        jobject jPropertyMap = env->NewObject(globalHashMapClass, hashMapInit);
+
         auto taglibProperties = fileRef.properties();
         for (auto &taglibProperty : taglibProperties) {
             jstring key = env->NewStringUTF(taglibProperty.first.toCString(true));
@@ -146,19 +148,23 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
             }
             env->CallObjectMethod(jPropertyMap, addProperty, key, values);
         }
+
+        jobject jAudioProperties = nullptr;
+        auto audioProperties = fileRef.audioProperties();
+        if (audioProperties != nullptr) {
+            jAudioProperties = env->NewObject(
+                    globalAudioPropertiesClass,
+                    audioPropertiesInit,
+                    (jint) audioProperties->lengthInMilliseconds(),
+                    (jint) audioProperties->bitrate(),
+                    (jint) audioProperties->sampleRate(),
+                    (jint) audioProperties->channels()
+            );
+        }
+        return env->NewObject(globalMetadataClass, metadataInit, jPropertyMap, jAudioProperties);
     }
 
-    auto audioProperties = fileRef.audioProperties();
-    jobject jAudioProperties = env->NewObject(
-            globalAudioPropertiesClass,
-            audioPropertiesInit,
-            (jint) audioProperties->lengthInMilliseconds(),
-            (jint) audioProperties->bitrate(),
-            (jint) audioProperties->sampleRate(),
-            (jint) audioProperties->channels()
-    );
-
-    return env->NewObject(globalMetadataClass, metadataInit, jPropertyMap, jAudioProperties);
+    return nullptr;
 }
 
 extern "C"
@@ -200,7 +206,7 @@ Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jclass clazz, ji
 
     jbyteArray result = nullptr;
 
-    if (!fileRef.isNull()) {
+    if (fileRef.isValid()) {
         TagLib::ByteVector byteVector;
         if (auto *flacFile = dynamic_cast<TagLib::FLAC::File *>(fileRef.file())) {
             const TagLib::List<TagLib::FLAC::Picture *> &picList = flacFile->pictureList();

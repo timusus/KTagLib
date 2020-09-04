@@ -10,14 +10,14 @@ import java.util.concurrent.TimeUnit
 
 class DocumentAdapter : RecyclerView.Adapter<ViewHolder>() {
 
-    val data: MutableList<Pair<AudioFile, Document>> = mutableListOf()
+    val data: MutableList<Pair<Document, AudioFile?>> = mutableListOf()
 
     fun clear() {
         data.clear()
         notifyDataSetChanged()
     }
 
-    fun addItem(item: Pair<AudioFile, Document>) {
+    fun addItem(item: Pair<Document, AudioFile?>) {
         data.add(item)
         notifyItemInserted(data.size - 1)
     }
@@ -31,22 +31,25 @@ class DocumentAdapter : RecyclerView.Adapter<ViewHolder>() {
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val (audioFile, document) = data[position]
-        
+        val (document, audioFile) = data[position]
+
         GlideApp.with(holder.albumArt)
             .load(audioFile)
             .into(holder.albumArt)
-        holder.documentNameTextView.text = document.displayName
-        holder.titleTextView.text = audioFile.title
-        holder.trackTextView.text = audioFile.track.toString()
-        holder.durationTextView.text = audioFile.duration?.toHms()
-        holder.artistTextView.text = audioFile.artist
-        holder.albumArtistTextView.text = audioFile.albumArtist
-        holder.albumTextView.text = audioFile.album
-        holder.yearTextView.text = audioFile.date
-        holder.discTextView.text = audioFile.disc.toString()
+
         holder.mimeTypeTextView.text = document.mimeType
-        holder.sizeTextView.text = "${"%.2f".format((audioFile.size / 1024f / 1024f))}MB"
+        if (audioFile != null) {
+            holder.documentNameTextView.text = document.displayName
+            holder.titleTextView.text = audioFile.title
+            holder.trackTextView.text = audioFile.track.toString()
+            holder.durationTextView.text = audioFile.duration?.toHms()
+            holder.artistTextView.text = audioFile.artist
+            holder.albumArtistTextView.text = audioFile.albumArtist
+            holder.albumTextView.text = audioFile.album
+            holder.yearTextView.text = audioFile.date
+            holder.discTextView.text = audioFile.disc.toString()
+            holder.sizeTextView.text = "${"%.2f".format(audioFile.size / 1024f / 1024f)}MB"
+        }
     }
 }
 
