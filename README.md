@@ -31,7 +31,7 @@ Read the tags from a file descriptor:
 
 `KTagLib.getMetadata(fileDescriptor: Int)`
 
-This returns a HashMap representing the tags (metadata) of the audio file located at `fileDescriptor`.
+This returns a Metadata object, containing the tags and audio properties of the audio file located at `fileDescriptor`, or null if none are found
 
 #### Retrieve Artwork ####
 
@@ -43,11 +43,9 @@ Returns a `ByteArray` (or null) representing the image data of the largest image
 
     fun writeMetadata(
         fileDescriptor: Int,
-        properties : HashMap<String, String>
+        properties : HashMap<String, ArrayList<String>>
     ): Boolean
 
-Attempts to write the tags supplied as a HashMap to the file located at `fileDescriptor`.
-
-Note: All tags passed to properties are replaced in the file. Therefore, only pass fields you want to change. To clear a tag, pass an empty string.
+Attempts to write the tags supplied via the HashMap to the file located at `fileDescriptor`. Existing tags with the same key are replaced.
 
 Returns true if the tags are successfully updated.

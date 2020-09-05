@@ -42,6 +42,8 @@ jmethodID iteratorNextEntry;
 jclass globalArrayListClass;
 jmethodID arrayListInit;
 jmethodID addListElement;
+jmethodID getListElement;
+jmethodID getListSize;
 
 
 class DebugListener : public TagLib::DebugListener {
@@ -54,13 +56,6 @@ DebugListener listener;
 
 static const char *convertJStringToCString(JNIEnv *env, jstring str) {
     return env->GetStringUTFChars(str, JNI_FALSE);
-}
-
-static void addIntegerProperty(JNIEnv *env, jobject properties, const char *key, long long value) {
-    std::string string_value = std::to_string(value);
-    jstring jKey = env->NewStringUTF(key);
-    jstring jValue = env->NewStringUTF(string_value.c_str());
-    env->CallObjectMethod(properties, addProperty, jKey, jValue);
 }
 
 extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
@@ -109,6 +104,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     env->DeleteLocalRef(arrayListClass);
     arrayListInit = env->GetMethodID(globalArrayListClass, "<init>", "(I)V");
     addListElement = env->GetMethodID(globalArrayListClass, "add", "(Ljava/lang/Object;)Z");
+    getListElement = env->GetMethodID(globalArrayListClass, "get", "(I)Ljava/lang/Object;");
+    getListSize = env->GetMethodID(globalArrayListClass, "size", "()I");
 
     TagLib::setDebugListener(&listener);;
 
@@ -184,10 +181,16 @@ Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz,
         while (env->CallBooleanMethod(iterator, iteratorHasNext)) {
             jobject entry = env->CallObjectMethod(iterator, iteratorNextEntry);
             auto key = (jstring) env->CallObjectMethod(entry, getPropertyKey);
-            auto value = (jstring) env->CallObjectMethod(entry, getPropertyValue);
+            jobject values = env->CallObjectMethod(entry, getPropertyValue);
+            jint len = env->CallIntMethod(values, getListSize);
+            TagLib::StringList stringList;
+            for (jint i = 0; i < len; i++) {
+                auto element = (jstring) env->CallObjectMethod(values, getListElement, i);
+                stringList.append(TagLib::String(convertJStringToCString(env, element)));
+            }
             taglibProperties.replace(
                     TagLib::String(convertJStringToCString(env, key)),
-                    TagLib::String(convertJStringToCString(env, value))
+                    stringList
             );
         }
 
