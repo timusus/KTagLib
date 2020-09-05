@@ -28,7 +28,7 @@ object KTagLib {
      * @return true if metadata written successfully, false otherwise
      */
     @JvmStatic
-    external fun writeMetadata(fileDescriptor: Int, properties: HashMap<String, String>): Boolean
+    external fun writeMetadata(fileDescriptor: Int, properties: HashMap<String, ArrayList<String?>>): Boolean
 
     /**
      * Returns a [ByteArray] representing the artwork for the file located at File Descriptor [fileDescriptor], or null if no artwork can be found.
