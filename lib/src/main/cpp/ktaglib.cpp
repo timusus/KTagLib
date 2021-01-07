@@ -211,10 +211,10 @@ Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jclass clazz, ji
 
     if (fileRef.isValid()) {
         TagLib::ByteVector byteVector;
+
         if (auto *flacFile = dynamic_cast<TagLib::FLAC::File *>(fileRef.file())) {
             const TagLib::List<TagLib::FLAC::Picture *> &picList = flacFile->pictureList();
             if (!picList.isEmpty()) {
-                byteVector = picList[0]->data();
                 size_t picSize = 0;
                 for (auto i : picList) {
                     size_t size = i->data().size();
@@ -226,40 +226,47 @@ Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jclass clazz, ji
             }
         } else if (auto *opusFile = dynamic_cast<TagLib::Ogg::Opus::File *>(fileRef.file())) {
             TagLib::Ogg::XiphComment *tag = opusFile->tag();
-            const TagLib::List<TagLib::FLAC::Picture *> &picList = tag->pictureList();
-            if (!picList.isEmpty()) {
-                size_t picSize = 0;
-                for (auto i : picList) {
-                    size_t size = i->data().size();
-                    if (size > picSize) {
-                        byteVector = i->data();
+            if (tag != nullptr) {
+                const TagLib::List<TagLib::FLAC::Picture *> &picList = tag->pictureList();
+                if (!picList.isEmpty()) {
+                    size_t picSize = 0;
+                    for (auto i : picList) {
+                        size_t size = i->data().size();
+                        if (size > picSize) {
+                            byteVector = i->data();
+                        }
+                        picSize = size;
                     }
-                    picSize = size;
                 }
             }
         } else {
             TagLib::Tag *tag = fileRef.tag();
-            TagLib::PictureMap pictureMap = tag->pictures();
-            TagLib::Picture picture;
-            // Finds the largest picture by byte size
-            size_t picSize = 0;
-            for (auto const &x: pictureMap) {
-                for (auto const &y: x.second) {
-                    size_t size = y.data().size();
-                    if (size > picSize) {
-                        picture = y;
+            if (tag != nullptr) {
+                TagLib::PictureMap pictureMap = tag->pictures();
+                if (!pictureMap.isEmpty()) {
+                    // Finds the largest picture by byte size
+                    size_t picSize = 0;
+                    for (auto const &pair: pictureMap) {
+                        for (auto const &i: pair.second) {
+                            size_t size = i.data().size();
+                            if (size > picSize) {
+                                byteVector = i.data();
+                            }
+                            picSize = size;
+                        }
                     }
-                    picSize = size;
                 }
             }
-            byteVector = picture.data();
         }
-        size_t len = byteVector.size();
-        if (len > 0) {
-            jbyteArray arr = env->NewByteArray(len);
-            char *data = byteVector.data();
-            env->SetByteArrayRegion(arr, 0, len, reinterpret_cast<jbyte *>(data));
-            result = arr;
+
+        if (!byteVector.isEmpty()) {
+            size_t len = byteVector.size();
+            if (len > 0) {
+                jbyteArray arr = env->NewByteArray(len);
+                char *data = byteVector.data();
+                env->SetByteArrayRegion(arr, 0, len, reinterpret_cast<jbyte *>(data));
+                result = arr;
+            }
         }
     }
 
