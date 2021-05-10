@@ -1,5 +1,7 @@
 package com.simplecityapps.ktaglib
 
+import androidx.annotation.Keep
+
 /**
  * The metadata associated with an audio file
  *
@@ -9,4 +11,5 @@ package com.simplecityapps.ktaglib
  * @see <a href="https://taglib.org/api/classTagLib_1_1PropertyMap.html">TagLib PropertyMap</a>
  *
  */
-class Metadata(val propertyMap: Map<String, List<String>>, val audioProperties: AudioProperties?)
+@Keep
+data class Metadata(val propertyMap: Map<String, List<String>>, val audioProperties: AudioProperties?)
