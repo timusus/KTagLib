@@ -30,9 +30,8 @@ data class AudioFile(
          * @param fileName name of the file
          * @return an AudioFile populated with various metadata retrieved from the tags of the file located at fileDescriptor, or null if metadata can't be retrieved
          */
-        @JvmStatic
-        fun getAudioFile(fileDescriptor: Int, filePath: String, fileName: String, lastModified: Long, size: Long): AudioFile? {
-            return KTagLib.getMetadata(fileDescriptor)?.let { metadata ->
+        fun KTagLib.getAudioFile(fileDescriptor: Int, filePath: String, fileName: String, lastModified: Long, size: Long): AudioFile? {
+            return getMetadata(fileDescriptor)?.let { metadata ->
                 AudioFile(
                     filePath,
                     size,

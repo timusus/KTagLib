@@ -11,6 +11,7 @@ import java.io.FileNotFoundException
 
 class AlbumArtFetcher(
     private val context: Context,
+    private val kTagLib: KTagLib,
     private val model: AudioFile
 ) : DataFetcher<ByteArrayInputStream> {
 
@@ -19,7 +20,7 @@ class AlbumArtFetcher(
     override fun loadData(priority: Priority, callback: DataFetcher.DataCallback<in ByteArrayInputStream>) {
         try {
             context.contentResolver.openFileDescriptor(Uri.parse(model.path), "r")?.use {
-                val artwork = KTagLib.getArtwork(it.detachFd())
+                val artwork = kTagLib.getArtwork(it.detachFd())
                 if (artwork != null) {
                     stream = ByteArrayInputStream(artwork)
                     callback.onDataReady(stream)
