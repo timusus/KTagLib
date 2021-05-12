@@ -1,5 +1,7 @@
 package com.simplecityapps.ktaglib
 
+import androidx.annotation.Keep
+
 /**
  * A set of audio properties associated with a file
  *
@@ -10,7 +12,8 @@ package com.simplecityapps.ktaglib
  *
  * @see <a href="https://taglib.org/api/classTagLib_1_1AudioProperties.html">TagLib AudioProperties</a>
  */
-class AudioProperties(
+@Keep
+data class AudioProperties(
     val duration: Int,
     val bitrate: Int,
     val sampleRate: Int,
