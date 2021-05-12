@@ -19,7 +19,7 @@ class AlbumArtFetcher(
     override fun loadData(priority: Priority, callback: DataFetcher.DataCallback<in ByteArrayInputStream>) {
         try {
             context.contentResolver.openFileDescriptor(Uri.parse(model.path), "r")?.use {
-                val artwork = KTagLib.getArtwork(it.fd)
+                val artwork = KTagLib.getArtwork(it.detachFd())
                 if (artwork != null) {
                     stream = ByteArrayInputStream(artwork)
                     callback.onDataReady(stream)
