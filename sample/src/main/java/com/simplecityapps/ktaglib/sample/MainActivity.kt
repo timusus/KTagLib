@@ -10,6 +10,8 @@ import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.RecyclerView
+import com.simplecityapps.ktaglib.KTagLib
+import com.simplecityapps.ktaglib.sample.AudioFile.Companion.getAudioFile
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
@@ -25,6 +27,8 @@ class MainActivity : AppCompatActivity() {
     private val scope = CoroutineScope(Dispatchers.Main + exceptionHandler)
 
     private lateinit var documentAdapter: DocumentAdapter
+
+    private val kTagLib = KTagLib()
 
 
     // Lifecycle
@@ -132,7 +136,7 @@ class MainActivity : AppCompatActivity() {
                         emit(
                             Pair(
                                 document,
-                                AudioFile.getAudioFile(pfd.detachFd(), document.uri.toString(), document.displayName.substringBeforeLast("."), document.lastModified, document.size)
+                                kTagLib.getAudioFile(pfd.detachFd(), document.uri.toString(), document.displayName.substringBeforeLast("."), document.lastModified, document.size)
                             )
                         )
                     } catch (e: IllegalStateException) {

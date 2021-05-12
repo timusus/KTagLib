@@ -1,6 +1,6 @@
 package com.simplecityapps.ktaglib
 
-object KTagLib {
+class KTagLib {
 
     init {
         System.loadLibrary("ktaglib")
@@ -12,7 +12,6 @@ object KTagLib {
      * @param fileDescriptor associated with the file whose properties are to be retrieved
      * @return [HashMap] of metadata and other file properties
      */
-    @JvmStatic
     external fun getMetadata(fileDescriptor: Int): Metadata?
 
     /**
@@ -27,7 +26,6 @@ object KTagLib {
      * @param properties the metadata fields and their values to be written
      * @return true if metadata written successfully, false otherwise
      */
-    @JvmStatic
     external fun writeMetadata(fileDescriptor: Int, properties: HashMap<String, ArrayList<String?>>): Boolean
 
     /**
@@ -35,6 +33,5 @@ object KTagLib {
      *
      * @param fileDescriptor File descriptor
      */
-    @JvmStatic
     external fun getArtwork(fileDescriptor: Int): ByteArray?
 }
