@@ -48,14 +48,28 @@ jmethodID getListSize;
 
 class DebugListener : public TagLib::DebugListener {
     void printMessage(const TagLib::String &msg) override {
-        __android_log_print(ANDROID_LOG_VERBOSE, "kTagLib", "%s", msg.toCString(true));
+        __android_log_print(ANDROID_LOG_VERBOSE, "kTagLib", "%s", msg.toCString(false));
     }
 };
 
 DebugListener listener;
 
-static const char *convertJStringToCString(JNIEnv *env, jstring str) {
-    return env->GetStringUTFChars(str, JNI_FALSE);
+jstring convertToJString(JNIEnv *env, const TagLib::String &taglibString) {
+    const char* utf8 = taglibString.toCString(false);
+    jbyteArray bytes = env->NewByteArray(strlen(utf8));
+    env->SetByteArrayRegion(bytes, 0, strlen(utf8), reinterpret_cast<const jbyte*>(utf8));
+
+    jclass stringClass = env->FindClass("java/lang/String");
+    jmethodID ctor = env->GetMethodID(stringClass, "<init>", "([BLjava/lang/String;)V");
+    jstring encoding = env->NewStringUTF("UTF-8");
+
+    jstring result = (jstring) env->NewObject(stringClass, ctor, bytes, encoding);
+
+    env->DeleteLocalRef(bytes);
+    env->DeleteLocalRef(encoding);
+    env->DeleteLocalRef(stringClass);
+
+    return result;
 }
 
 extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
@@ -138,10 +152,10 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
 
         auto taglibProperties = fileRef.properties();
         for (auto &taglibProperty : taglibProperties) {
-            jstring key = env->NewStringUTF(taglibProperty.first.toCString(true));
+            jstring key = env->NewStringUTF(taglibProperty.first.toCString(false));
             jobject values = env->NewObject(globalArrayListClass, arrayListInit, (jint) 0);
             for (auto &value : taglibProperty.second) {
-                env->CallBooleanMethod(values, addListElement, env->NewStringUTF(value.toCString(true)));
+                env->CallBooleanMethod(values, addListElement, env->NewStringUTF(value.toCString(false)));
             }
             env->CallObjectMethod(jPropertyMap, addProperty, key, values);
         }
