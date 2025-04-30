@@ -47,7 +47,7 @@ afterEvaluate {
             release(MavenPublication) {
                 from components.release
 
-                groupId = 'com.simplecityapps.ktaglib'
+                groupId = 'com.github.timusus'
                 artifactId = 'ktaglib'
                 version = '1.5'
             }
