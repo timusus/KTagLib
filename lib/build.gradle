@@ -49,7 +49,7 @@ afterEvaluate {
 
                 groupId = 'com.simplecityapps.ktaglib'
                 artifactId = 'ktaglib'
-                version = '1.4'
+                version = '1.5'
             }
         }
     }
