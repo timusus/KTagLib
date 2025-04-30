@@ -6,17 +6,15 @@ cmake_minimum_required(VERSION 3.10.2)
 # Project name
 project("ktaglib")
 
-add_subdirectory("../../../../taglib/taglib" taglib)
+add_subdirectory("../../../../taglib" taglib)
 
 add_library(ktaglib SHARED ktaglib.cpp)
+set_property(TARGET ktaglib PROPERTY CXX_STANDARD 17)
 
 find_library(log-lib log)
 target_link_libraries(ktaglib
         ${log-lib}
         tag)
-
-target_include_directories(tag PUBLIC
-        "../../../../taglib/3rdparty")
 
 target_include_directories(ktaglib PUBLIC
         "../../../../taglib/taglib"
