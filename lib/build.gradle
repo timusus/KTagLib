@@ -55,7 +55,7 @@ publishing {
 
             groupId = 'com.github.timusus'
             artifactId = 'ktaglib'
-            version = '1.5'
+            version = '1.5.1'
 
             afterEvaluate {
                 from components.release
