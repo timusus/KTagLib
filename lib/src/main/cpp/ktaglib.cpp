@@ -12,9 +12,8 @@
 #include <tstringlist.h>
 #include <toolkit/tiostream.h>
 #include <toolkit/tfilestream.h>
-#include <toolkit/tpicture.h>
 #include <toolkit/tmap.h>
-#include <toolkit/tpicturemap.h>
+#include <toolkit/tpropertymap.h>
 #include <toolkit/tdebuglistener.h>
 #include <android/log.h>
 
@@ -133,7 +132,7 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
     auto stream = std::make_unique<TagLib::FileStream>(file_descriptor, true);
     TagLib::FileRef fileRef(stream.get());
 
-    if (fileRef.isValid()) {
+    if (!fileRef.isNull() && fileRef.tag()) {
         jobject jPropertyMap = env->NewObject(globalHashMapClass, hashMapInit);
 
         auto taglibProperties = fileRef.properties();
@@ -173,7 +172,7 @@ Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz,
 
     jboolean isSuccessful = false;
 
-    if (fileRef.isValid()) {
+    if (!fileRef.isNull() && fileRef.tag()) {
         TagLib::PropertyMap taglibProperties = fileRef.properties();
         jobject entrySet = env->CallObjectMethod(properties, getEntrySet);
         jobject iterator = env->CallObjectMethod(entrySet, getIterator);
@@ -209,7 +208,7 @@ Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jclass clazz, ji
 
     jbyteArray result = nullptr;
 
-    if (fileRef.isValid()) {
+    if (!fileRef.isNull()) {
         TagLib::ByteVector byteVector;
 
         if (auto *flacFile = dynamic_cast<TagLib::FLAC::File *>(fileRef.file())) {
@@ -242,17 +241,20 @@ Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jclass clazz, ji
         } else {
             TagLib::Tag *tag = fileRef.tag();
             if (tag != nullptr) {
-                TagLib::PictureMap pictureMap = tag->pictures();
+                TagLib::List<TagLib::VariantMap> pictureMap = tag->complexProperties("PICTURE");
                 if (!pictureMap.isEmpty()) {
                     // Finds the largest picture by byte size
                     size_t picSize = 0;
-                    for (auto const &pair: pictureMap) {
-                        for (auto const &i: pair.second) {
-                            size_t size = i.data().size();
-                            if (size > picSize) {
-                                byteVector = i.data();
+                    for (auto const &property: pictureMap) {
+                        for (auto const &[key, value]: property) {
+                            if (value.type() == TagLib::Variant::ByteVector) {
+                                auto i = value.value<TagLib::ByteVector>();
+                                size_t size = i.size();
+                                if (size > picSize) {
+                                    byteVector = i;
+                                    picSize = size;
+                                }
                             }
-                            picSize = size;
                         }
                     }
                 }
