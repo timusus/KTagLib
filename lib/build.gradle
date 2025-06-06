@@ -5,12 +5,14 @@ plugins {
 }
 
 android {
-    compileSdkVersion 31
+    compileSdkVersion 35
 
     defaultConfig {
         minSdkVersion 21
-        targetSdkVersion 31
+        targetSdkVersion 35
     }
+
+    namespace = "com.simplecityapps.ktaglib"
 
     buildTypes {
         release {
@@ -21,7 +23,6 @@ android {
 
     externalNativeBuild {
         cmake {
-            version '3.31.6'
             path 'src/main/cpp/CMakeLists.txt'
         }
     }
@@ -34,22 +35,30 @@ android {
     kotlinOptions {
         jvmTarget = '1.8'
     }
+
+    publishing {
+        singleVariant('release') {
+            withSourcesJar()
+        }
+    }
 }
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
-    implementation 'androidx.documentfile:documentfile:1.0.1'
+    implementation 'androidx.documentfile:documentfile:1.1.0'
+    implementation 'androidx.annotation:annotation-jvm:1.9.1'
 }
 
-afterEvaluate {
-    publishing {
-        publications {
-            release(MavenPublication) {
-                from components.release
+publishing {
+    publications {
+        release(MavenPublication) {
 
-                groupId = 'com.github.timusus'
-                artifactId = 'ktaglib'
-                version = '1.5'
+            groupId = 'com.github.timusus'
+            artifactId = 'ktaglib'
+            version = '1.5'
+
+            afterEvaluate {
+                from components.release
             }
         }
     }
