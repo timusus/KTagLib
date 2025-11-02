@@ -8,6 +8,7 @@ import com.bumptech.glide.load.data.DataFetcher
 import com.simplecityapps.ktaglib.KTagLib
 import java.io.ByteArrayInputStream
 import java.io.FileNotFoundException
+import androidx.core.net.toUri
 
 class AlbumArtFetcher(
     private val context: Context,
@@ -19,8 +20,10 @@ class AlbumArtFetcher(
 
     override fun loadData(priority: Priority, callback: DataFetcher.DataCallback<in ByteArrayInputStream>) {
         try {
-            context.contentResolver.openFileDescriptor(Uri.parse(model.path), "r")?.use {
-                val artwork = kTagLib.getArtwork(it.detachFd())
+            context.contentResolver.openFileDescriptor(model.path.toUri(), "r")?.use {
+                // Extract filename from path for better file type detection
+                val filename = model.path.toUri().lastPathSegment
+                val artwork = kTagLib.getArtwork(it.detachFd(), filename)
                 if (artwork != null) {
                     stream = ByteArrayInputStream(artwork)
                     callback.onDataReady(stream)

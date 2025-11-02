@@ -15,7 +15,72 @@
 #include <toolkit/tmap.h>
 #include <toolkit/tpropertymap.h>
 #include <toolkit/tdebuglistener.h>
-#include <android/log.h>
+
+// Configure verbose logging for detailed diagnostics
+// Set to 1 to enable detailed property/value logging (useful for debugging)
+// Set to 0 for production to reduce logging overhead
+#define KTAGLIB_ENABLE_VERBOSE_LOGGING 1
+
+// Custom IOStream wrapper that delegates to FileStream but provides a filename hint
+// This allows FileRef to use extension-based detection while still using file descriptors for I/O
+class FileStreamWithName : public TagLib::IOStream {
+public:
+    FileStreamWithName(int fileDescriptor, const TagLib::String &fileName, bool readOnly = true)
+        : m_stream(fileDescriptor, readOnly), m_name(fileName) {
+    }
+
+    TagLib::FileName name() const override {
+        return m_name.toCString(true);
+    }
+
+    TagLib::ByteVector readBlock(size_t length) override {
+        return m_stream.readBlock(length);
+    }
+
+    void writeBlock(const TagLib::ByteVector &data) override {
+        m_stream.writeBlock(data);
+    }
+
+    void insert(const TagLib::ByteVector &data, TagLib::offset_t start = 0, size_t replace = 0) override {
+        m_stream.insert(data, start, replace);
+    }
+
+    void removeBlock(TagLib::offset_t start = 0, size_t length = 0) override {
+        m_stream.removeBlock(start, length);
+    }
+
+    bool readOnly() const override {
+        return m_stream.readOnly();
+    }
+
+    bool isOpen() const override {
+        return m_stream.isOpen();
+    }
+
+    void seek(TagLib::offset_t offset, Position p = Beginning) override {
+        m_stream.seek(offset, p);
+    }
+
+    void clear() override {
+        m_stream.clear();
+    }
+
+    TagLib::offset_t tell() const override {
+        return m_stream.tell();
+    }
+
+    TagLib::offset_t length() override {
+        return m_stream.length();
+    }
+
+    void truncate(TagLib::offset_t length) override {
+        m_stream.truncate(length);
+    }
+
+private:
+    TagLib::FileStream m_stream;
+    TagLib::String m_name;
+};
 
 jclass globalMetadataClass;
 jmethodID metadataInit;
@@ -127,47 +192,134 @@ extern "C" void JNI_OnUnload(JavaVM *vm, void *reserved) {
 
 extern "C"
 JNIEXPORT jobject JNICALL
-Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, jint file_descriptor) {
+Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, jint file_descriptor, jstring filename) {
 
-    auto stream = std::make_unique<TagLib::FileStream>(file_descriptor, true);
-    TagLib::FileRef fileRef(stream.get());
+    // Log function entry with file descriptor
+    __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "getMetadata: Opening file descriptor %d", file_descriptor);
 
-    if (!fileRef.isNull() && fileRef.tag()) {
-        jobject jPropertyMap = env->NewObject(globalHashMapClass, hashMapInit);
-
-        auto taglibProperties = fileRef.properties();
-        for (auto &taglibProperty : taglibProperties) {
-            jstring key = env->NewStringUTF(taglibProperty.first.toCString(true));
-            jobject values = env->NewObject(globalArrayListClass, arrayListInit, (jint) 0);
-            for (auto &value : taglibProperty.second) {
-                env->CallBooleanMethod(values, addListElement, env->NewStringUTF(value.toCString(true)));
-            }
-            env->CallObjectMethod(jPropertyMap, addProperty, key, values);
-        }
-
-        jobject jAudioProperties = nullptr;
-        auto audioProperties = fileRef.audioProperties();
-        if (audioProperties != nullptr) {
-            jAudioProperties = env->NewObject(
-                    globalAudioPropertiesClass,
-                    audioPropertiesInit,
-                    (jint) audioProperties->lengthInMilliseconds(),
-                    (jint) audioProperties->bitrate(),
-                    (jint) audioProperties->sampleRate(),
-                    (jint) audioProperties->channels()
-            );
-        }
-        return env->NewObject(globalMetadataClass, metadataInit, jPropertyMap, jAudioProperties);
+    // Convert filename from Java string (may be null)
+    const char* filenameStr = nullptr;
+    if (filename != nullptr) {
+        filenameStr = env->GetStringUTFChars(filename, nullptr);
+        __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "Filename hint provided: %s", filenameStr);
+    } else {
+        __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "No filename hint provided");
     }
 
-    return nullptr;
+    // Create stream - use custom wrapper if filename provided, otherwise use standard FileStream
+    std::unique_ptr<TagLib::IOStream> stream;
+    if (filenameStr != nullptr) {
+        stream = std::make_unique<FileStreamWithName>(file_descriptor, TagLib::String(filenameStr), true);
+        env->ReleaseStringUTFChars(filename, filenameStr);
+    } else {
+        stream = std::make_unique<TagLib::FileStream>(file_descriptor, true);
+    }
+
+    // Log stream creation and name (if available)
+    __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "Stream created: %s", stream->name());
+
+    TagLib::FileRef fileRef(stream.get());
+
+    // Check if FileRef was created successfully (file type detection)
+    if (fileRef.isNull()) {
+        __android_log_print(ANDROID_LOG_WARN, "kTagLib",
+            "FileRef is null - file type not recognized or file corrupt");
+        return nullptr;
+    }
+    __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "FileRef created successfully - file type recognized");
+
+    // Check if tag data exists
+    if (!fileRef.tag()) {
+        __android_log_print(ANDROID_LOG_WARN, "kTagLib",
+            "Tag is null - no metadata found in file");
+        return nullptr;
+    }
+    __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "Tag found in file");
+
+    jobject jPropertyMap = env->NewObject(globalHashMapClass, hashMapInit);
+
+    auto taglibProperties = fileRef.properties();
+
+    // Log property count
+    __android_log_print(ANDROID_LOG_DEBUG, "kTagLib",
+        "Extracted %lu properties from file", (unsigned long)taglibProperties.size());
+
+    if (taglibProperties.isEmpty()) {
+        __android_log_print(ANDROID_LOG_WARN, "kTagLib",
+            "Property map is empty - file has tag but no readable fields");
+    }
+
+    for (auto &taglibProperty : taglibProperties) {
+        // Convert property key once and reuse
+        const char* keyStr = taglibProperty.first.toCString(true);
+        jstring key = env->NewStringUTF(keyStr);
+
+#if KTAGLIB_ENABLE_VERBOSE_LOGGING
+        // Log each property key and value count
+        __android_log_print(ANDROID_LOG_VERBOSE, "kTagLib",
+            "Property: %s = [%lu values]",
+            keyStr,
+            (unsigned long)taglibProperty.second.size());
+#endif
+
+        jobject values = env->NewObject(globalArrayListClass, arrayListInit, (jint) 0);
+        for (auto &value : taglibProperty.second) {
+#if KTAGLIB_ENABLE_VERBOSE_LOGGING
+            // Log individual values
+            __android_log_print(ANDROID_LOG_VERBOSE, "kTagLib",
+                "  Value: '%s'", value.toCString(true));
+#endif
+            env->CallBooleanMethod(values, addListElement, env->NewStringUTF(value.toCString(true)));
+        }
+        env->CallObjectMethod(jPropertyMap, addProperty, key, values);
+    }
+
+    jobject jAudioProperties = nullptr;
+    auto audioProperties = fileRef.audioProperties();
+    if (audioProperties != nullptr) {
+        // Log audio properties
+        __android_log_print(ANDROID_LOG_DEBUG, "kTagLib",
+            "Audio properties: duration=%dms, bitrate=%dkbps, sampleRate=%dHz, channels=%d",
+            audioProperties->lengthInMilliseconds(),
+            audioProperties->bitrate(),
+            audioProperties->sampleRate(),
+            audioProperties->channels());
+
+        jAudioProperties = env->NewObject(
+                globalAudioPropertiesClass,
+                audioPropertiesInit,
+                (jint) audioProperties->lengthInMilliseconds(),
+                (jint) audioProperties->bitrate(),
+                (jint) audioProperties->sampleRate(),
+                (jint) audioProperties->channels()
+        );
+    } else {
+        __android_log_print(ANDROID_LOG_WARN, "kTagLib", "Audio properties not available");
+    }
+
+    __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "Successfully created Metadata object");
+    return env->NewObject(globalMetadataClass, metadataInit, jPropertyMap, jAudioProperties);
 }
 
 extern "C"
 JNIEXPORT jboolean JNICALL
-Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz, jint file_descriptor, jobject properties) {
+Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz, jint file_descriptor, jobject properties, jstring filename) {
 
-    auto stream = std::make_unique<TagLib::FileStream>(file_descriptor, false);
+    // Convert filename from Java string (may be null)
+    const char* filenameStr = nullptr;
+    if (filename != nullptr) {
+        filenameStr = env->GetStringUTFChars(filename, nullptr);
+    }
+
+    // Create stream - use custom wrapper if filename provided, otherwise use standard FileStream
+    std::unique_ptr<TagLib::IOStream> stream;
+    if (filenameStr != nullptr) {
+        stream = std::make_unique<FileStreamWithName>(file_descriptor, TagLib::String(filenameStr), false);
+        env->ReleaseStringUTFChars(filename, filenameStr);
+    } else {
+        stream = std::make_unique<TagLib::FileStream>(file_descriptor, false);
+    }
+
     TagLib::FileRef fileRef(stream.get());
 
     jboolean isSuccessful = false;
@@ -201,9 +353,23 @@ Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz,
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL
-Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jclass clazz, jint file_descriptor) {
+Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jclass clazz, jint file_descriptor, jstring filename) {
 
-    auto stream = std::make_unique<TagLib::FileStream>(file_descriptor, true);
+    // Convert filename from Java string (may be null)
+    const char* filenameStr = nullptr;
+    if (filename != nullptr) {
+        filenameStr = env->GetStringUTFChars(filename, nullptr);
+    }
+
+    // Create stream - use custom wrapper if filename provided, otherwise use standard FileStream
+    std::unique_ptr<TagLib::IOStream> stream;
+    if (filenameStr != nullptr) {
+        stream = std::make_unique<FileStreamWithName>(file_descriptor, TagLib::String(filenameStr), true);
+        env->ReleaseStringUTFChars(filename, filenameStr);
+    } else {
+        stream = std::make_unique<TagLib::FileStream>(file_descriptor, true);
+    }
+
     TagLib::FileRef fileRef(stream.get());
 
     jbyteArray result = nullptr;

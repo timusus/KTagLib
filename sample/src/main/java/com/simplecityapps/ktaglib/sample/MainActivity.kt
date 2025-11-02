@@ -136,7 +136,7 @@ class MainActivity : AppCompatActivity() {
                         emit(
                             Pair(
                                 document,
-                                kTagLib.getAudioFile(pfd.detachFd(), document.uri.toString(), document.displayName.substringBeforeLast("."), document.lastModified, document.size)
+                                kTagLib.getAudioFile(pfd.detachFd(), document.uri.toString(), document.displayName, document.lastModified, document.size)
                             )
                         )
                     } catch (e: IllegalStateException) {

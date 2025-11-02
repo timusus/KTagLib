@@ -31,7 +31,7 @@ data class AudioFile(
          * @return an AudioFile populated with various metadata retrieved from the tags of the file located at fileDescriptor, or null if metadata can't be retrieved
          */
         fun KTagLib.getAudioFile(fileDescriptor: Int, filePath: String, fileName: String, lastModified: Long, size: Long): AudioFile? {
-            return getMetadata(fileDescriptor)?.let { metadata ->
+            return getMetadata(fileDescriptor, fileName)?.let { metadata ->
                 AudioFile(
                     filePath,
                     size,
