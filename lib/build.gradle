@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    compileSdkVersion 35
+    compileSdkVersion 36
 
     defaultConfig {
         minSdkVersion 21
-        targetSdkVersion 35
+        targetSdkVersion 36
     }
 
     namespace = "com.simplecityapps.ktaglib"
