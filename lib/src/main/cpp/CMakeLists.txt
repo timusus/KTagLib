@@ -11,6 +11,9 @@ add_subdirectory("../../../../taglib" taglib)
 add_library(ktaglib SHARED ktaglib.cpp)
 set_property(TARGET ktaglib PROPERTY CXX_STANDARD 17)
 
+# Set 16KB page alignment for Android 15+ compatibility
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
+
 find_library(log-lib log)
 target_link_libraries(ktaglib
         ${log-lib}
