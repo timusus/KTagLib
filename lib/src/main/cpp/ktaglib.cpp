@@ -19,7 +19,7 @@
 // Configure verbose logging for detailed diagnostics
 // Set to 1 to enable detailed property/value logging (useful for debugging)
 // Set to 0 for production to reduce logging overhead
-#define KTAGLIB_ENABLE_VERBOSE_LOGGING 1
+#define KTAGLIB_ENABLE_VERBOSE_LOGGING 0
 
 // Custom IOStream wrapper that delegates to FileStream but provides a filename hint
 // This allows FileRef to use extension-based detection while still using file descriptors for I/O
