@@ -1,7 +1,12 @@
+import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
+import com.vanniktech.maven.publish.JavadocJar
+import com.vanniktech.maven.publish.SourcesJar
+import java.util.Base64
+
 plugins {
     id 'com.android.library'
     id 'kotlin-android'
-    id 'maven-publish'
+    id 'com.vanniktech.maven.publish'
 }
 
 android {
@@ -35,12 +40,6 @@ android {
     kotlinOptions {
         jvmTarget = '1.8'
     }
-
-    publishing {
-        singleVariant('release') {
-            withSourcesJar()
-        }
-    }
 }
 
 dependencies {
@@ -49,17 +48,75 @@ dependencies {
     implementation 'androidx.annotation:annotation-jvm:1.9.1'
 }
 
-publishing {
-    publications {
-        release(MavenPublication) {
+// The in-memory signing key is stored base64-encoded to avoid multiline gradle.properties issues.
+def signingKeyRaw = System.getenv('ORG_GRADLE_PROJECT_signingInMemoryKey') ?: project.findProperty('signingInMemoryKey')
 
-            groupId = 'com.github.timusus'
-            artifactId = 'ktaglib'
-            version = '1.6.1'
+def decodeSigningKey(String raw) {
+    if (raw.startsWith('-----BEGIN PGP')) return raw
+    try {
+        def decoded = new String(Base64.decoder.decode(raw))
+        return decoded.startsWith('-----BEGIN PGP') ? decoded : null
+    } catch (Exception ignored) {
+        return null
+    }
+}
 
-            afterEvaluate {
-                from components.release
+def signingKey = signingKeyRaw != null ? decodeSigningKey(signingKeyRaw) : null
+
+mavenPublishing {
+    coordinates('com.simplecityapps', 'ktaglib', '1.6.2')
+
+    configure(new AndroidSingleVariantLibrary(
+            new JavadocJar.Empty(),
+            new SourcesJar.Sources(),
+            'release'
+    ))
+
+    publishToMavenCentral()
+
+    pom {
+        name = 'KTagLib'
+        description = 'Kotlin bindings for TagLib, for reading and writing audio metadata on Android'
+        url = 'https://github.com/timusus/ktaglib'
+
+        licenses {
+            license {
+                name = 'The Apache License, Version 2.0'
+                url = 'https://www.apache.org/licenses/LICENSE-2.0.txt'
             }
         }
+
+        developers {
+            developer {
+                id = 'timusus'
+                name = 'Tim Malseed'
+                email = 't.malseed@gmail.com'
+            }
+        }
+
+        scm {
+            url = 'https://github.com/timusus/ktaglib'
+            connection = 'scm:git:git://github.com/timusus/ktaglib.git'
+            developerConnection = 'scm:git:ssh://git@github.com/timusus/ktaglib.git'
+        }
+    }
+}
+
+// gradleProperty(...) reads gradle.properties verbatim, so the base64-encoded key above
+// can't be handed to signAllPublications() directly; configure the signing plugin manually
+// with the decoded value instead.
+if (signingKey != null) {
+    apply plugin: 'signing'
+
+    signing {
+        useInMemoryPgpKeys(
+                project.findProperty('signingInMemoryKeyId') as String,
+                signingKey,
+                project.findProperty('signingInMemoryKeyPassword') as String
+        )
+    }
+
+    publishing.publications.all { publication ->
+        signing.sign(publication)
     }
 }

@@ -4,20 +4,13 @@ Kotlin bindings for [TagLib](https://github.com/taglib/taglib)
 
 Gradle:
 
-Step 1. Add the Jitpack repository to the root build.gradle
-
-	allprojects {
-		repositories {
-			...
-			maven { url 'https://jitpack.io' }
-		}
-	}
-
-Step 2. Add the dependency
-
 	dependencies {
-	    implementation("com.github.timusus:KTagLib:release-SNAPSHOT") // or kTagLib:1.6.1
+	    implementation("com.simplecityapps:ktaglib:1.6.2")
 	}
+
+KTagLib is published to Maven Central, so no extra repository declaration is needed beyond `mavenCentral()`.
+
+Versions up to 1.6.1 are also available on JitPack as `com.github.timusus:ktaglib:1.6.1` for projects that haven't migrated yet, but new releases are Maven Central only.
 
 
 See the sample app for an example of reading tags, using the Storage Access Framework.
