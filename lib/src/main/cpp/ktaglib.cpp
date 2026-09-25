@@ -380,7 +380,7 @@ Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz,
         stream = std::make_unique<TagLib::FileStream>(file_descriptor, false);
     }
 
-    TagLib::FileRef fileRef(stream.get());
+    TagLib::FileRef fileRef(stream.get(), false);
 
     jboolean isSuccessful = false;
 
@@ -428,7 +428,7 @@ Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jclass clazz, ji
         stream = std::make_unique<TagLib::FileStream>(file_descriptor, true);
     }
 
-    TagLib::FileRef fileRef(stream.get());
+    TagLib::FileRef fileRef(stream.get(), false);
 
     jbyteArray result = nullptr;
 
