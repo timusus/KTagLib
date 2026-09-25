@@ -44,6 +44,40 @@ android {
     }
 }
 
+// TagLib's own sample corpus (taglib/tests/data) is packaged as extra androidTest assets under
+// taglib-data/, so the instrumented tests can run every file through KTagLib without copying the
+// corpus into this repo.
+abstract class CopyTagLibTestData extends DefaultTask {
+    @InputDirectory
+    @PathSensitive(PathSensitivity.RELATIVE)
+    abstract DirectoryProperty getSourceDir()
+
+    @OutputDirectory
+    abstract DirectoryProperty getOutputDir()
+
+    @Inject
+    abstract FileSystemOperations getFileSystemOperations()
+
+    @TaskAction
+    void copy() {
+        fileSystemOperations.sync {
+            from(sourceDir)
+            into(outputDir.dir('taglib-data'))
+        }
+    }
+}
+
+def copyTagLibTestData = tasks.register('copyTagLibTestData', CopyTagLibTestData) {
+    sourceDir.set(rootProject.layout.projectDirectory.dir('taglib/tests/data'))
+    outputDir.set(layout.buildDirectory.dir('generated/taglibTestData'))
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.androidTest?.sources?.assets?.addGeneratedSourceDirectory(copyTagLibTestData, { it.outputDir })
+    }
+}
+
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
     implementation 'androidx.documentfile:documentfile:1.1.0'
