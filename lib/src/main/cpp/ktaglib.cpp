@@ -119,6 +119,21 @@ class DebugListener : public TagLib::DebugListener {
 
 DebugListener listener;
 
+// Returns the data of the largest picture in a FLAC::Picture list, or an empty ByteVector if the list
+// is empty.
+static TagLib::ByteVector largestPicture(const TagLib::List<TagLib::FLAC::Picture *> &picList) {
+    TagLib::ByteVector largest;
+    size_t largestSize = 0;
+    for (auto picture : picList) {
+        const TagLib::ByteVector &data = picture->data();
+        if (data.size() > largestSize) {
+            largest = data;
+            largestSize = data.size();
+        }
+    }
+    return largest;
+}
+
 // Converts a Java string to a TagLib::String through its UTF-16 code units.
 //
 // GetStringUTFChars returns *modified* UTF-8, which encodes characters outside the BMP (emoji, for
@@ -403,31 +418,11 @@ Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jclass clazz, ji
         TagLib::ByteVector byteVector;
 
         if (auto *flacFile = dynamic_cast<TagLib::FLAC::File *>(fileRef.file())) {
-            const TagLib::List<TagLib::FLAC::Picture *> &picList = flacFile->pictureList();
-            if (!picList.isEmpty()) {
-                size_t picSize = 0;
-                for (auto i : picList) {
-                    size_t size = i->data().size();
-                    if (size > picSize) {
-                        byteVector = i->data();
-                    }
-                    picSize = size;
-                }
-            }
+            byteVector = largestPicture(flacFile->pictureList());
         } else if (auto *opusFile = dynamic_cast<TagLib::Ogg::Opus::File *>(fileRef.file())) {
             TagLib::Ogg::XiphComment *tag = opusFile->tag();
             if (tag != nullptr) {
-                const TagLib::List<TagLib::FLAC::Picture *> &picList = tag->pictureList();
-                if (!picList.isEmpty()) {
-                    size_t picSize = 0;
-                    for (auto i : picList) {
-                        size_t size = i->data().size();
-                        if (size > picSize) {
-                            byteVector = i->data();
-                        }
-                        picSize = size;
-                    }
-                }
+                byteVector = largestPicture(tag->pictureList());
             }
         } else {
             TagLib::Tag *tag = fileRef.tag();
