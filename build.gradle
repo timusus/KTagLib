@@ -1,15 +1,15 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 buildscript {
     ext.kotlin_version = '2.4.20'
-    ext.agp_version = '9.4.1'
+    // Pinned to AGP 8.x: AGP 9's connectedDebugAndroidTest fails on adb serials containing a colon
+    // and reports JUnit assumption violations as failures. Move back to AGP 9 per issue #15.
+    ext.agp_version = '8.13.2'
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
         classpath "com.android.tools.build:gradle:$agp_version"
-        // Provides com.android.legacy-kapt, the kapt plugin for AGP's built-in Kotlin support.
-        classpath "com.android.tools.build:gradle-kotlin:$agp_version"
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
         classpath 'com.vanniktech:gradle-maven-publish-plugin:0.37.0'
     }

@@ -1,10 +1,12 @@
 plugins {
     id 'com.android.application'
-    id 'com.android.legacy-kapt'
+    id 'kotlin-android'
+    id 'kotlin-kapt'
 }
 
 android {
-    // glide 5.0.9 and androidx.core 1.19 require compileSdk 37 (AAR metadata)
+    // glide 5.0.9 requires compileSdk 37 (AAR metadata); AGP 8.13 is only tested up to 36.1, so
+    // gradle.properties sets android.suppressUnsupportedCompileSdk=37.0
     compileSdk 37
 
     namespace = "com.simplecityapps.ktaglib.sample"
@@ -32,11 +34,18 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
 dependencies {
 
     implementation project(':lib')
 
-    implementation 'androidx.core:core-ktx:1.19.1'
+    // androidx.core 1.19 requires AGP 9.1+; stay on 1.18 while AGP is pinned to 8.x (#15)
+    implementation 'androidx.core:core-ktx:1.18.0'
     implementation 'androidx.appcompat:appcompat:1.8.0'
     implementation 'com.google.android.material:material:1.14.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.2'
