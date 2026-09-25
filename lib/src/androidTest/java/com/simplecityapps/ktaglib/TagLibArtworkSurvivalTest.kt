@@ -3,6 +3,7 @@ package com.simplecityapps.ktaglib
 import com.simplecityapps.ktaglib.TagLibCorpus.artwork
 import com.simplecityapps.ktaglib.TagLibCorpus.write
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
@@ -10,9 +11,7 @@ import org.junit.runners.Parameterized
 /**
  * writeMetadata must not drop embedded pictures: for every corpus file (plus the artwork.flac /
  * artwork.opus fixtures) that has artwork, write TITLE and check getArtwork returns the same bytes.
- * Files without artwork, or that TagLib can't save, pass trivially. They return early rather than
- * using JUnit assumptions, because AGP 9's connected test runner reports AssumptionViolatedException
- * as a failure instead of a skip.
+ * Files without artwork, or that TagLib can't save, are skipped via JUnit assumptions.
  */
 @RunWith(Parameterized::class)
 class TagLibArtworkSurvivalTest(private val name: String, private val dir: String) {
@@ -30,8 +29,9 @@ class TagLibArtworkSurvivalTest(private val name: String, private val dir: Strin
     @Test
     fun writingTitleKeepsArtwork() {
         val file = TagLibCorpus.copy(name, dir)
-        val before = kTagLib.artwork(file) ?: return
-        if (!kTagLib.write(file, mapOf("TITLE" to listOf("New Title")))) return
+        val before = kTagLib.artwork(file)
+        assumeTrue("$name has no artwork", before != null)
+        assumeTrue("TagLib can't save $name", kTagLib.write(file, mapOf("TITLE" to listOf("New Title"))))
 
         assertArrayEquals("artwork of $name after writing TITLE", before, kTagLib.artwork(file))
     }
