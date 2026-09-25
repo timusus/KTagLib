@@ -1,6 +1,7 @@
 
 #include <jni.h>
 #include <string>
+#include <vector>
 #include <sys/stat.h>
 #include <android/log.h>
 
@@ -118,8 +119,44 @@ class DebugListener : public TagLib::DebugListener {
 
 DebugListener listener;
 
-static const char *convertJStringToCString(JNIEnv *env, jstring str) {
-    return env->GetStringUTFChars(str, JNI_FALSE);
+// Converts a Java string to a TagLib::String through its UTF-16 code units.
+//
+// GetStringUTFChars returns *modified* UTF-8, which encodes characters outside the BMP (emoji, for
+// example) as a pair of 3-byte surrogates that standard UTF-8 decoders reject, and a bare
+// TagLib::String(const char *) is decoded as Latin-1. Either way non-ASCII text gets corrupted on
+// write, so hand TagLib the UTF-16 code units, which it stores as-is.
+static TagLib::String toTagLibString(JNIEnv *env, jstring str) {
+    if (str == nullptr) {
+        return TagLib::String();
+    }
+    const jsize length = env->GetStringLength(str);
+    const jchar *chars = env->GetStringChars(str, nullptr);
+    if (chars == nullptr) {
+        return TagLib::String();
+    }
+    TagLib::ByteVector bytes(static_cast<unsigned int>(length) * 2, 0);
+    for (jsize i = 0; i < length; i++) {
+        bytes[i * 2] = static_cast<char>(chars[i] & 0xFF);
+        bytes[i * 2 + 1] = static_cast<char>((chars[i] >> 8) & 0xFF);
+    }
+    env->ReleaseStringChars(str, chars);
+    return TagLib::String(bytes, TagLib::String::UTF16LE);
+}
+
+// Converts a TagLib::String to a Java string through its UTF-16 code units.
+//
+// NewStringUTF expects modified UTF-8, so the standard 4-byte UTF-8 that toCString(true) produces
+// for characters outside the BMP is not valid input for it (CheckJNI aborts on it).
+static jstring toJString(JNIEnv *env, const TagLib::String &str) {
+    const TagLib::ByteVector bytes = str.data(TagLib::String::UTF16LE);
+    const size_t length = bytes.size() / 2;
+    std::vector<jchar> chars(length);
+    for (size_t i = 0; i < length; i++) {
+        chars[i] = static_cast<jchar>(
+                static_cast<unsigned char>(bytes[i * 2]) |
+                (static_cast<unsigned char>(bytes[i * 2 + 1]) << 8));
+    }
+    return env->NewString(chars.data(), static_cast<jsize>(length));
 }
 
 extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
@@ -197,21 +234,14 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
     // Log function entry with file descriptor
     __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "getMetadata: Opening file descriptor %d", file_descriptor);
 
-    // Convert filename from Java string (may be null)
-    const char* filenameStr = nullptr;
-    if (filename != nullptr) {
-        filenameStr = env->GetStringUTFChars(filename, nullptr);
-        __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "Filename hint provided: %s", filenameStr);
-    } else {
-        __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "No filename hint provided");
-    }
-
     // Create stream - use custom wrapper if filename provided, otherwise use standard FileStream
     std::unique_ptr<TagLib::IOStream> stream;
-    if (filenameStr != nullptr) {
-        stream = std::make_unique<FileStreamWithName>(file_descriptor, TagLib::String(filenameStr), true);
-        env->ReleaseStringUTFChars(filename, filenameStr);
+    if (filename != nullptr) {
+        const TagLib::String filenameStr = toTagLibString(env, filename);
+        __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "Filename hint provided: %s", filenameStr.toCString(true));
+        stream = std::make_unique<FileStreamWithName>(file_descriptor, filenameStr, true);
     } else {
+        __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "No filename hint provided");
         stream = std::make_unique<TagLib::FileStream>(file_descriptor, true);
     }
 
@@ -251,14 +281,13 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
 
     for (auto &taglibProperty : taglibProperties) {
         // Convert property key once and reuse
-        const char* keyStr = taglibProperty.first.toCString(true);
-        jstring key = env->NewStringUTF(keyStr);
+        jstring key = toJString(env, taglibProperty.first);
 
 #if KTAGLIB_ENABLE_VERBOSE_LOGGING
         // Log each property key and value count
         __android_log_print(ANDROID_LOG_VERBOSE, "kTagLib",
             "Property: %s = [%lu values]",
-            keyStr,
+            taglibProperty.first.toCString(true),
             (unsigned long)taglibProperty.second.size());
 #endif
 
@@ -269,9 +298,14 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
             __android_log_print(ANDROID_LOG_VERBOSE, "kTagLib",
                 "  Value: '%s'", value.toCString(true));
 #endif
-            env->CallBooleanMethod(values, addListElement, env->NewStringUTF(value.toCString(true)));
+            jstring jValue = toJString(env, value);
+            env->CallBooleanMethod(values, addListElement, jValue);
+            env->DeleteLocalRef(jValue);
         }
-        env->CallObjectMethod(jPropertyMap, addProperty, key, values);
+        jobject previous = env->CallObjectMethod(jPropertyMap, addProperty, key, values);
+        env->DeleteLocalRef(previous);
+        env->DeleteLocalRef(values);
+        env->DeleteLocalRef(key);
     }
 
     jobject jAudioProperties = nullptr;
@@ -305,17 +339,10 @@ extern "C"
 JNIEXPORT jboolean JNICALL
 Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz, jint file_descriptor, jobject properties, jstring filename) {
 
-    // Convert filename from Java string (may be null)
-    const char* filenameStr = nullptr;
-    if (filename != nullptr) {
-        filenameStr = env->GetStringUTFChars(filename, nullptr);
-    }
-
     // Create stream - use custom wrapper if filename provided, otherwise use standard FileStream
     std::unique_ptr<TagLib::IOStream> stream;
-    if (filenameStr != nullptr) {
-        stream = std::make_unique<FileStreamWithName>(file_descriptor, TagLib::String(filenameStr), false);
-        env->ReleaseStringUTFChars(filename, filenameStr);
+    if (filename != nullptr) {
+        stream = std::make_unique<FileStreamWithName>(file_descriptor, toTagLibString(env, filename), false);
     } else {
         stream = std::make_unique<TagLib::FileStream>(file_descriptor, false);
     }
@@ -337,12 +364,15 @@ Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz,
             TagLib::StringList stringList;
             for (jint i = 0; i < len; i++) {
                 auto element = (jstring) env->CallObjectMethod(values, getListElement, i);
-                stringList.append(TagLib::String(convertJStringToCString(env, element)));
+                if (element != nullptr) {
+                    stringList.append(toTagLibString(env, element));
+                    env->DeleteLocalRef(element);
+                }
             }
-            taglibProperties.replace(
-                    TagLib::String(convertJStringToCString(env, key)),
-                    stringList
-            );
+            taglibProperties.replace(toTagLibString(env, key), stringList);
+            env->DeleteLocalRef(values);
+            env->DeleteLocalRef(key);
+            env->DeleteLocalRef(entry);
         }
 
         fileRef.setProperties(taglibProperties);
@@ -355,17 +385,10 @@ Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz,
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jclass clazz, jint file_descriptor, jstring filename) {
 
-    // Convert filename from Java string (may be null)
-    const char* filenameStr = nullptr;
-    if (filename != nullptr) {
-        filenameStr = env->GetStringUTFChars(filename, nullptr);
-    }
-
     // Create stream - use custom wrapper if filename provided, otherwise use standard FileStream
     std::unique_ptr<TagLib::IOStream> stream;
-    if (filenameStr != nullptr) {
-        stream = std::make_unique<FileStreamWithName>(file_descriptor, TagLib::String(filenameStr), true);
-        env->ReleaseStringUTFChars(filename, filenameStr);
+    if (filename != nullptr) {
+        stream = std::make_unique<FileStreamWithName>(file_descriptor, toTagLibString(env, filename), true);
     } else {
         stream = std::make_unique<TagLib::FileStream>(file_descriptor, true);
     }
