@@ -396,6 +396,17 @@ Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz,
             jobject entry = env->CallObjectMethod(iterator, iteratorNextEntry);
             auto key = (jstring) env->CallObjectMethod(entry, getPropertyKey);
             jobject values = env->CallObjectMethod(entry, getPropertyValue);
+
+            // A null key has no valid tag field to write to - skip it instead of writing it
+            // under an empty-string key.
+            if (key == nullptr) {
+                __android_log_print(ANDROID_LOG_WARN, "kTagLib",
+                    "writeMetadata: skipping property with a null key");
+                env->DeleteLocalRef(values);
+                env->DeleteLocalRef(entry);
+                continue;
+            }
+
             jint len = env->CallIntMethod(values, getListSize);
             TagLib::StringList stringList;
             for (jint i = 0; i < len; i++) {

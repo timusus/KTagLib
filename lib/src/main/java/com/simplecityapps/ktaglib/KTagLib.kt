@@ -20,6 +20,11 @@ class KTagLib {
      *
      * The values of fields in [properties] will overwrite the existing values in the tag.
      *
+     * A null key in [properties] is skipped (and logged as a warning); a null element within a
+     * field's value list is simply ignored, so `["a", null, "b"]` is written as `["a", "b"]`. An
+     * empty value list for a key removes that field from the tag - confirmed for Xiph comments
+     * (FLAC/Vorbis/Opus), where an empty list, on write, explicitly removes all values for the field.
+     *
      * Note: [fileDescriptor] should have write access otherwise the fields cannot be written.
      * Note: Taglib supports inserting values in existing fields operations but this implementation does not.
      *
