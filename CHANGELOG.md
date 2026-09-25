@@ -4,6 +4,8 @@
 
 ### Breaking
 
+- Consumers need Kotlin 2.2 or newer: the library compiles at Kotlin API/language version 2.2 and
+  depends on kotlin-stdlib 2.2.21. Minimum SDK stays 21.
 - `writeMetadata` now takes `properties: Map<String, List<String>>` instead of
   `HashMap<String, ArrayList<String?>>`. Keys and values are non-null, and any `Map`/`List`
   implementation is accepted. The contract holds for every supported format (MP3, FLAC, MP4,
