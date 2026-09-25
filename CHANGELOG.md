@@ -32,6 +32,9 @@
 - `getMetadata` returns null only when the file can't be opened or its type isn't recognised;
   a file without tags returns an empty property map along with its audio properties (#9). TagLib 2
   always provides a tag object, so this documents the contract rather than fixing an observed failure.
+- TagLib 2.1.1 → 2.3.2: reads and writes Matroska (MKA, MKV) and WebM files, verifies values
+  parsed from crafted or corrupt files more strictly across most formats, tolerates more malformed
+  MP4 cover art and RIFF chunks, supports RF64/BW64 WAV, and fixes data races in shared caches.
 
 ### Performance
 
