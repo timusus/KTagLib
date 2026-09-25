@@ -246,22 +246,30 @@ extern "C"
 JNIEXPORT jobject JNICALL
 Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, jint file_descriptor, jstring filename) {
 
+#if KTAGLIB_ENABLE_VERBOSE_LOGGING
     // Log function entry with file descriptor
     __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "getMetadata: Opening file descriptor %d", file_descriptor);
+#endif
 
     // Create stream - use custom wrapper if filename provided, otherwise use standard FileStream
     std::unique_ptr<TagLib::IOStream> stream;
     if (filename != nullptr) {
         const TagLib::String filenameStr = toTagLibString(env, filename);
+#if KTAGLIB_ENABLE_VERBOSE_LOGGING
         __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "Filename hint provided: %s", filenameStr.toCString(true));
+#endif
         stream = std::make_unique<FileStreamWithName>(file_descriptor, filenameStr, true);
     } else {
+#if KTAGLIB_ENABLE_VERBOSE_LOGGING
         __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "No filename hint provided");
+#endif
         stream = std::make_unique<TagLib::FileStream>(file_descriptor, true);
     }
 
+#if KTAGLIB_ENABLE_VERBOSE_LOGGING
     // Log stream creation and name (if available)
     __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "Stream created: %s", stream->name());
+#endif
 
     TagLib::FileRef fileRef(stream.get());
 
@@ -271,7 +279,9 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
             "FileRef is null - file type not recognized or file corrupt");
         return nullptr;
     }
+#if KTAGLIB_ENABLE_VERBOSE_LOGGING
     __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "FileRef created successfully - file type recognized");
+#endif
 
     // Check if tag data exists
     if (!fileRef.tag()) {
@@ -279,15 +289,19 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
             "Tag is null - no metadata found in file");
         return nullptr;
     }
+#if KTAGLIB_ENABLE_VERBOSE_LOGGING
     __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "Tag found in file");
+#endif
 
     jobject jPropertyMap = env->NewObject(globalHashMapClass, hashMapInit);
 
     auto taglibProperties = fileRef.properties();
 
+#if KTAGLIB_ENABLE_VERBOSE_LOGGING
     // Log property count
     __android_log_print(ANDROID_LOG_DEBUG, "kTagLib",
         "Extracted %lu properties from file", (unsigned long)taglibProperties.size());
+#endif
 
     if (taglibProperties.isEmpty()) {
         __android_log_print(ANDROID_LOG_WARN, "kTagLib",
@@ -326,6 +340,7 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
     jobject jAudioProperties = nullptr;
     auto audioProperties = fileRef.audioProperties();
     if (audioProperties != nullptr) {
+#if KTAGLIB_ENABLE_VERBOSE_LOGGING
         // Log audio properties
         __android_log_print(ANDROID_LOG_DEBUG, "kTagLib",
             "Audio properties: duration=%dms, bitrate=%dkbps, sampleRate=%dHz, channels=%d",
@@ -333,6 +348,7 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
             audioProperties->bitrate(),
             audioProperties->sampleRate(),
             audioProperties->channels());
+#endif
 
         jAudioProperties = env->NewObject(
                 globalAudioPropertiesClass,
@@ -346,7 +362,9 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
         __android_log_print(ANDROID_LOG_WARN, "kTagLib", "Audio properties not available");
     }
 
+#if KTAGLIB_ENABLE_VERBOSE_LOGGING
     __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "Successfully created Metadata object");
+#endif
     return env->NewObject(globalMetadataClass, metadataInit, jPropertyMap, jAudioProperties);
 }
 
