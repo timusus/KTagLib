@@ -5,7 +5,7 @@ Kotlin bindings for [TagLib](https://github.com/taglib/taglib)
 Gradle:
 
 	dependencies {
-	    implementation("com.simplecityapps:ktaglib:1.6.3")
+	    implementation("com.simplecityapps:ktaglib:2.0.0")
 	}
 
 KTagLib is published to Maven Central, so no extra repository declaration is needed beyond `mavenCentral()`.
@@ -24,7 +24,7 @@ Read the tags from a file descriptor:
 
 `KTagLib().getMetadata(fileDescriptor: Int, filename: String? = null)`
 
-This returns a Metadata object, containing the tags and audio properties of the audio file located at `fileDescriptor`, or null if none are found.
+This returns a Metadata object, containing the tags and audio properties of the audio file located at `fileDescriptor`, or null only if the file can't be opened or its type isn't recognised. A file with no tags returns an empty property map.
 
 The optional `filename` parameter helps with file type detection. Providing the filename (with extension) is recommended for better compatibility, especially for files with large metadata blocks.
 
