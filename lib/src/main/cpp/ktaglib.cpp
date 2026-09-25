@@ -374,6 +374,8 @@ Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz,
             env->DeleteLocalRef(key);
             env->DeleteLocalRef(entry);
         }
+        env->DeleteLocalRef(iterator);
+        env->DeleteLocalRef(entrySet);
 
         fileRef.setProperties(taglibProperties);
         isSuccessful = fileRef.save();
