@@ -5,7 +5,7 @@ import java.util.*
 
 /**
  * A data model with some basic fields for representing various metadata fields of an audio file.
- * If this data class is insufficient to meet your needs, directly use [KTagLib.getMetadata] to obtain a HashMap of all properties and write a mapping function to convert it to your model as done here.
+ * If this data class is insufficient to meet your needs, directly use [KTagLib.getMetadata] to obtain its [com.simplecityapps.ktaglib.Metadata] (a property map plus audio properties, or null if the file can't be read) and write a mapping function to convert it to your model as done here.
  */
 data class AudioFile(
     val path: String,
