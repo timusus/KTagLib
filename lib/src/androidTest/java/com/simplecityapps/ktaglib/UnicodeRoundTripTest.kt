@@ -46,8 +46,7 @@ class UnicodeRoundTripTest {
     private fun assertRoundTrip(asset: String) {
         val file = copyAsset(asset)
 
-        val properties = HashMap<String, ArrayList<String?>>()
-        values.forEach { (key, value) -> properties[key] = arrayListOf(value) }
+        val properties = values.mapValues { (_, value) -> listOf(value) }
 
         val written = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_WRITE).use { pfd ->
             kTagLib.writeMetadata(pfd.detachFd(), properties, file.name)

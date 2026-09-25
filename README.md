@@ -40,11 +40,15 @@ The optional `filename` parameter helps with file type detection.
 
     fun writeMetadata(
         fileDescriptor: Int,
-        properties: HashMap<String, ArrayList<String>>,
+        properties: Map<String, List<String>>,
         filename: String? = null
     ): Boolean
 
-Attempts to write the tags supplied via the map to the file located at `fileDescriptor`. Existing tags with the same key are replaced.
+Writes the tags supplied via the map to the file located at `fileDescriptor`, in every supported format:
+
+- a key with values replaces that field wholesale;
+- a key with an empty list (`emptyList()`) removes that field;
+- fields whose keys aren't in the map are left untouched.
 
 Returns true if the tags are successfully updated.
 

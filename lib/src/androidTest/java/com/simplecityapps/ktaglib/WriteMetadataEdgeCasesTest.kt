@@ -11,9 +11,10 @@ import org.junit.runner.RunWith
 import java.io.File
 
 /**
- * Covers timusus/KTagLib#10: writeMetadata must skip a null property key (rather than writing it
- * under an empty-string key), and an empty value list for a key must remove that field from the
- * tag rather than leaving it untouched or writing an empty placeholder value.
+ * Edge cases of writeMetadata's input handling. The Kotlin signature rules out null keys and values,
+ * but Java callers can still pass them: a null key or a null value list is skipped (timusus/KTagLib#10)
+ * and a null element within a list is dropped. Any Map/List implementation is accepted, not only
+ * HashMap/ArrayList.
  */
 @RunWith(AndroidJUnit4::class)
 class WriteMetadataEdgeCasesTest {
@@ -21,21 +22,21 @@ class WriteMetadataEdgeCasesTest {
     private val kTagLib = KTagLib()
 
     @Test
-    fun emptyListRemovesFieldFromFlacTag() {
+    fun anyMapAndListImplementationIsAccepted() {
         val file = copyAsset("silence.flac")
 
-        write(file, mapOf("TITLE" to arrayListOf("Some Title")))
-        assertEquals(listOf("Some Title"), read(file).propertyMap["TITLE"])
+        write(file, sortedMapOf("TITLE" to java.util.LinkedList(listOf("Linked")), "ARTIST" to listOf("Single")))
 
-        write(file, mapOf("TITLE" to arrayListOf()))
-        assertFalse("TITLE should be removed after writing an empty list", read(file).propertyMap.containsKey("TITLE"))
+        val properties = read(file).propertyMap
+        assertEquals(listOf("Linked"), properties["TITLE"])
+        assertEquals(listOf("Single"), properties["ARTIST"])
     }
 
     @Test
     fun nullValuesWithinAListAreIgnored() {
         val file = copyAsset("silence.flac")
 
-        write(file, mapOf("GENRE" to arrayListOf("Rock", null, "Pop")))
+        write(file, javaMap("GENRE" to arrayListOf("Rock", null, "Pop")))
 
         assertEquals(listOf("Rock", "Pop"), read(file).propertyMap["GENRE"])
     }
@@ -44,23 +45,32 @@ class WriteMetadataEdgeCasesTest {
     fun nullKeyIsSkippedAndOtherPropertiesAreStillWritten() {
         val file = copyAsset("silence.flac")
 
-        @Suppress("UNCHECKED_CAST")
-        val properties = HashMap<Any?, Any?>().apply {
-            put("TITLE", arrayListOf("Kept Title"))
-            put(null, arrayListOf("Should be skipped"))
-        } as HashMap<String, ArrayList<String?>>
+        write(file, javaMap("TITLE" to arrayListOf("Kept Title"), null to arrayListOf("Should be skipped")))
 
-        val written = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_WRITE).use { pfd ->
-            kTagLib.writeMetadata(pfd.detachFd(), properties, file.name)
-        }
-        assertTrue("writeMetadata failed", written)
-
-        assertEquals(listOf("Kept Title"), read(file).propertyMap["TITLE"])
+        val properties = read(file).propertyMap
+        assertEquals(listOf("Kept Title"), properties["TITLE"])
+        assertFalse("an empty key should not be written", properties.containsKey(""))
     }
 
-    private fun write(file: File, properties: Map<String, ArrayList<String?>>) {
+    @Test
+    fun nullValueListIsSkippedAndLeavesTheFieldUntouched() {
+        val file = copyAsset("silence.flac")
+        write(file, mapOf("TITLE" to listOf("Original")))
+
+        write(file, javaMap("TITLE" to null, "ARTIST" to arrayListOf("Written")))
+
+        val properties = read(file).propertyMap
+        assertEquals(listOf("Original"), properties["TITLE"])
+        assertEquals(listOf("Written"), properties["ARTIST"])
+    }
+
+    // Builds the kind of map a Java caller could pass, with nulls the Kotlin types forbid.
+    @Suppress("UNCHECKED_CAST")
+    private fun javaMap(vararg entries: Pair<String?, List<String?>?>): Map<String, List<String>> = HashMap<String?, List<String?>?>().apply { entries.forEach { (key, value) -> put(key, value) } } as Map<String, List<String>>
+
+    private fun write(file: File, properties: Map<String, List<String>>) {
         val written = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_WRITE).use { pfd ->
-            kTagLib.writeMetadata(pfd.detachFd(), HashMap(properties), file.name)
+            kTagLib.writeMetadata(pfd.detachFd(), properties, file.name)
         }
         assertTrue("writeMetadata failed", written)
     }

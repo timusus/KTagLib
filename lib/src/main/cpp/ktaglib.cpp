@@ -96,7 +96,14 @@ jclass globalMapEntryClass;
 jmethodID getPropertyKey;
 jmethodID getPropertyValue;
 jmethodID addProperty;
+
+// Looked up on the java.util.Map / java.util.List interfaces so writeMetadata accepts any
+// implementation (Kotlin's read-only maps and lists included), not only HashMap / ArrayList.
+jclass globalMapClass;
 jmethodID getEntrySet;
+jclass globalListClass;
+jmethodID getListElement;
+jmethodID getListSize;
 
 jclass globalSetClass;
 jclass globalIteratorClass;
@@ -107,8 +114,6 @@ jmethodID iteratorNextEntry;
 jclass globalArrayListClass;
 jmethodID arrayListInit;
 jmethodID addListElement;
-jmethodID getListElement;
-jmethodID getListSize;
 
 
 class DebugListener : public TagLib::DebugListener {
@@ -207,7 +212,11 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     env->DeleteLocalRef(hashMapClass);
     hashMapInit = env->GetMethodID(globalHashMapClass, "<init>", "()V");
     addProperty = env->GetMethodID(globalHashMapClass, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
-    getEntrySet = env->GetMethodID(globalHashMapClass, "entrySet", "()Ljava/util/Set;");
+
+    jclass mapClass = env->FindClass("java/util/Map");
+    globalMapClass = reinterpret_cast<jclass>(env->NewGlobalRef(mapClass));
+    env->DeleteLocalRef(mapClass);
+    getEntrySet = env->GetMethodID(globalMapClass, "entrySet", "()Ljava/util/Set;");
 
     jclass mapEntryClass = env->FindClass("java/util/Map$Entry");
     globalMapEntryClass = reinterpret_cast<jclass>(env->NewGlobalRef(mapEntryClass));
@@ -220,8 +229,12 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     env->DeleteLocalRef(arrayListClass);
     arrayListInit = env->GetMethodID(globalArrayListClass, "<init>", "(I)V");
     addListElement = env->GetMethodID(globalArrayListClass, "add", "(Ljava/lang/Object;)Z");
-    getListElement = env->GetMethodID(globalArrayListClass, "get", "(I)Ljava/lang/Object;");
-    getListSize = env->GetMethodID(globalArrayListClass, "size", "()I");
+
+    jclass listClass = env->FindClass("java/util/List");
+    globalListClass = reinterpret_cast<jclass>(env->NewGlobalRef(listClass));
+    env->DeleteLocalRef(listClass);
+    getListElement = env->GetMethodID(globalListClass, "get", "(I)Ljava/lang/Object;");
+    getListSize = env->GetMethodID(globalListClass, "size", "()I");
 
     TagLib::setDebugListener(&listener);;
 
@@ -238,6 +251,9 @@ extern "C" void JNI_OnUnload(JavaVM *vm, void *reserved) {
     env->DeleteGlobalRef(globalMapEntryClass);
     env->DeleteGlobalRef(globalIteratorClass);
     env->DeleteGlobalRef(globalArrayListClass);
+    env->DeleteGlobalRef(globalMapClass);
+    env->DeleteGlobalRef(globalListClass);
+    env->DeleteGlobalRef(globalSetClass);
 
     TagLib::setDebugListener(nullptr);
 }
@@ -397,12 +413,13 @@ Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz,
             auto key = (jstring) env->CallObjectMethod(entry, getPropertyKey);
             jobject values = env->CallObjectMethod(entry, getPropertyValue);
 
-            // A null key has no valid tag field to write to - skip it instead of writing it
-            // under an empty-string key.
-            if (key == nullptr) {
+            // A null key has no valid tag field to write to, and a null value list has no
+            // meaning - skip either (only reachable from Java callers) rather than guess.
+            if (key == nullptr || values == nullptr) {
                 __android_log_print(ANDROID_LOG_WARN, "kTagLib",
-                    "writeMetadata: skipping property with a null key");
-                env->DeleteLocalRef(values);
+                    "writeMetadata: skipping property with a null %s", key == nullptr ? "key" : "value list");
+                if (key != nullptr) env->DeleteLocalRef(key);
+                if (values != nullptr) env->DeleteLocalRef(values);
                 env->DeleteLocalRef(entry);
                 continue;
             }
@@ -411,12 +428,22 @@ Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz,
             TagLib::StringList stringList;
             for (jint i = 0; i < len; i++) {
                 auto element = (jstring) env->CallObjectMethod(values, getListElement, i);
+                // Null elements (Java callers only) are dropped.
                 if (element != nullptr) {
                     stringList.append(toTagLibString(env, element));
                     env->DeleteLocalRef(element);
                 }
             }
-            taglibProperties.replace(toTagLibString(env, key), stringList);
+            // An empty list removes the field. Erasing the key (rather than storing an empty
+            // StringList) makes that uniform: setProperties removes every key absent from the map
+            // in all formats, whereas an empty value list is handled per format (WAV keeps the
+            // field).
+            const TagLib::String tagKey = toTagLibString(env, key);
+            if (stringList.isEmpty()) {
+                taglibProperties.erase(tagKey);
+            } else {
+                taglibProperties.replace(tagKey, stringList);
+            }
             env->DeleteLocalRef(values);
             env->DeleteLocalRef(key);
             env->DeleteLocalRef(entry);
