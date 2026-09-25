@@ -283,58 +283,61 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
     __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "FileRef created successfully - file type recognized");
 #endif
 
-    // Check if tag data exists
-    if (!fileRef.tag()) {
-        __android_log_print(ANDROID_LOG_WARN, "kTagLib",
-            "Tag is null - no metadata found in file");
-        return nullptr;
-    }
-#if KTAGLIB_ENABLE_VERBOSE_LOGGING
-    __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "Tag found in file");
-#endif
-
     jobject jPropertyMap = env->NewObject(globalHashMapClass, hashMapInit);
 
-    auto taglibProperties = fileRef.properties();
-
-#if KTAGLIB_ENABLE_VERBOSE_LOGGING
-    // Log property count
-    __android_log_print(ANDROID_LOG_DEBUG, "kTagLib",
-        "Extracted %lu properties from file", (unsigned long)taglibProperties.size());
-#endif
-
-    if (taglibProperties.isEmpty()) {
+    // A recognized file without a tag (e.g. a bare WAV with no ID3) still has audio properties
+    // worth returning, so only skip property extraction here rather than the whole result -
+    // TagLib::File::properties() dereferences tag() unconditionally, so it is not safe to call
+    // when the tag is null.
+    if (!fileRef.tag()) {
         __android_log_print(ANDROID_LOG_WARN, "kTagLib",
-            "Property map is empty - file has tag but no readable fields");
-    }
-
-    for (auto &taglibProperty : taglibProperties) {
-        // Convert property key once and reuse
-        jstring key = toJString(env, taglibProperty.first);
-
+            "Tag is null - file has no readable tag, returning audio properties only");
+    } else {
 #if KTAGLIB_ENABLE_VERBOSE_LOGGING
-        // Log each property key and value count
-        __android_log_print(ANDROID_LOG_VERBOSE, "kTagLib",
-            "Property: %s = [%lu values]",
-            taglibProperty.first.toCString(true),
-            (unsigned long)taglibProperty.second.size());
+        __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "Tag found in file");
 #endif
 
-        jobject values = env->NewObject(globalArrayListClass, arrayListInit, (jint) 0);
-        for (auto &value : taglibProperty.second) {
+        auto taglibProperties = fileRef.properties();
+
 #if KTAGLIB_ENABLE_VERBOSE_LOGGING
-            // Log individual values
-            __android_log_print(ANDROID_LOG_VERBOSE, "kTagLib",
-                "  Value: '%s'", value.toCString(true));
+        // Log property count
+        __android_log_print(ANDROID_LOG_DEBUG, "kTagLib",
+            "Extracted %lu properties from file", (unsigned long)taglibProperties.size());
 #endif
-            jstring jValue = toJString(env, value);
-            env->CallBooleanMethod(values, addListElement, jValue);
-            env->DeleteLocalRef(jValue);
+
+        if (taglibProperties.isEmpty()) {
+            __android_log_print(ANDROID_LOG_WARN, "kTagLib",
+                "Property map is empty - file has tag but no readable fields");
         }
-        jobject previous = env->CallObjectMethod(jPropertyMap, addProperty, key, values);
-        env->DeleteLocalRef(previous);
-        env->DeleteLocalRef(values);
-        env->DeleteLocalRef(key);
+
+        for (auto &taglibProperty : taglibProperties) {
+            // Convert property key once and reuse
+            jstring key = toJString(env, taglibProperty.first);
+
+#if KTAGLIB_ENABLE_VERBOSE_LOGGING
+            // Log each property key and value count
+            __android_log_print(ANDROID_LOG_VERBOSE, "kTagLib",
+                "Property: %s = [%lu values]",
+                taglibProperty.first.toCString(true),
+                (unsigned long)taglibProperty.second.size());
+#endif
+
+            jobject values = env->NewObject(globalArrayListClass, arrayListInit, (jint) 0);
+            for (auto &value : taglibProperty.second) {
+#if KTAGLIB_ENABLE_VERBOSE_LOGGING
+                // Log individual values
+                __android_log_print(ANDROID_LOG_VERBOSE, "kTagLib",
+                    "  Value: '%s'", value.toCString(true));
+#endif
+                jstring jValue = toJString(env, value);
+                env->CallBooleanMethod(values, addListElement, jValue);
+                env->DeleteLocalRef(jValue);
+            }
+            jobject previous = env->CallObjectMethod(jPropertyMap, addProperty, key, values);
+            env->DeleteLocalRef(previous);
+            env->DeleteLocalRef(values);
+            env->DeleteLocalRef(key);
+        }
     }
 
     jobject jAudioProperties = nullptr;
