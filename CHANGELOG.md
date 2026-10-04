@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.1.0
+
+Source and binary compatible with 2.0.0.
+
+### Added
+
+- `AudioProperties.bitsPerSample`: the bit depth stored by FLAC, WAV, AIFF, MP4, APE, WavPack,
+  TrueAudio, ASF, Matroska, DSF, DSDIFF and Shorten files, or 0 for formats without one (MP3,
+  Ogg Vorbis, Opus, Musepack). Lossy formats that store a value (MP4 AAC, for example) report the
+  container's nominal value, typically 16. It defaults to 0 in the constructor, and the 2.0
+  constructor and `copy` are kept for binary compatibility.
+
 ## 2.0.0
 
 ### Breaking

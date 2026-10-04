@@ -110,7 +110,7 @@ def decodeSigningKey(String raw) {
 def signingKey = signingKeyRaw != null ? decodeSigningKey(signingKeyRaw) : null
 
 mavenPublishing {
-    coordinates('com.simplecityapps', 'ktaglib', '2.0.0')
+    coordinates('com.simplecityapps', 'ktaglib', '2.1.0')
 
     configure(new AndroidSingleVariantLibrary(
             new JavadocJar.Empty(),
