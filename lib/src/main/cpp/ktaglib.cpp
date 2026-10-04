@@ -21,6 +21,11 @@
 #include <dsdiff/dsdiffproperties.h>
 #include <dsf/dsfproperties.h>
 #include <flac/flacproperties.h>
+#include <mpc/mpcproperties.h>
+#include <mpeg/mpegproperties.h>
+#include <ogg/opus/opusproperties.h>
+#include <ogg/speex/speexproperties.h>
+#include <ogg/vorbis/vorbisproperties.h>
 #include <matroska/matroskaproperties.h>
 #include <mp4/mp4properties.h>
 #include <riff/aiff/aiffproperties.h>
@@ -171,6 +176,59 @@ static int bitsPerSample(const TagLib::AudioProperties *properties) {
     return 0;
 }
 
+// Returns the lowercase name of the audio codec (not the container), or nullptr if it is unknown.
+static const char *codecName(const TagLib::AudioProperties *properties) {
+    if (auto p = dynamic_cast<const TagLib::MP4::Properties *>(properties)) {
+        switch (p->codec()) {
+            case TagLib::MP4::Properties::AAC: return "aac";
+            case TagLib::MP4::Properties::ALAC: return "alac";
+            case TagLib::MP4::Properties::AC3: return "ac3";
+            case TagLib::MP4::Properties::EAC3: return "eac3";
+            case TagLib::MP4::Properties::FLAC: return "flac";
+            case TagLib::MP4::Properties::DTS: return "dts";
+            case TagLib::MP4::Properties::Opus: return "opus";
+            default: return nullptr;
+        }
+    }
+    if (dynamic_cast<const TagLib::FLAC::Properties *>(properties)) return "flac";
+    if (dynamic_cast<const TagLib::RIFF::WAV::Properties *>(properties)) return "wav";
+    if (dynamic_cast<const TagLib::RIFF::AIFF::Properties *>(properties)) return "aiff";
+    if (dynamic_cast<const TagLib::APE::Properties *>(properties)) return "ape";
+    if (dynamic_cast<const TagLib::WavPack::Properties *>(properties)) return "wavpack";
+    if (dynamic_cast<const TagLib::DSF::Properties *>(properties)) return "dsd";
+    if (dynamic_cast<const TagLib::DSDIFF::Properties *>(properties)) return "dsd";
+    if (auto p = dynamic_cast<const TagLib::MPEG::Properties *>(properties)) {
+        return p->layer() == 1 ? "mp1" : p->layer() == 2 ? "mp2" : "mp3";
+    }
+    if (dynamic_cast<const TagLib::Vorbis::Properties *>(properties)) return "vorbis";
+    if (dynamic_cast<const TagLib::Ogg::Opus::Properties *>(properties)) return "opus";
+    if (dynamic_cast<const TagLib::Ogg::Speex::Properties *>(properties)) return "speex";
+    if (auto p = dynamic_cast<const TagLib::ASF::Properties *>(properties)) {
+        switch (p->codec()) {
+            case TagLib::ASF::Properties::WMA1:
+            case TagLib::ASF::Properties::WMA2: return "wma";
+            case TagLib::ASF::Properties::WMA9Pro: return "wmapro";
+            case TagLib::ASF::Properties::WMA9Lossless: return "wmalossless";
+            default: return nullptr;
+        }
+    }
+    if (dynamic_cast<const TagLib::TrueAudio::Properties *>(properties)) return "tta";
+    if (dynamic_cast<const TagLib::Shorten::Properties *>(properties)) return "shorten";
+    if (dynamic_cast<const TagLib::MPC::Properties *>(properties)) return "musepack";
+    if (auto p = dynamic_cast<const TagLib::Matroska::Properties *>(properties)) {
+        const std::string id = p->codecName().to8Bit(false);
+        auto startsWith = [&id](const char *prefix) { return id.rfind(prefix, 0) == 0; };
+        if (id == "A_FLAC") return "flac";
+        if (startsWith("A_AAC")) return "aac";
+        if (id == "A_ALAC") return "alac";
+        if (id == "A_OPUS") return "opus";
+        if (startsWith("A_VORBIS")) return "vorbis";
+        if (id == "A_MPEG/L3") return "mp3";
+        return nullptr;
+    }
+    return nullptr;
+}
+
 // GetStringUTFChars returns *modified* UTF-8, which encodes characters outside the BMP (emoji, for
 // example) as a pair of 3-byte surrogates that standard UTF-8 decoders reject, and a bare
 // TagLib::String(const char *) is decoded as Latin-1. Either way non-ASCII text gets corrupted on
@@ -223,7 +281,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     jclass audioPropertiesClass = env->FindClass("com/simplecityapps/ktaglib/AudioProperties");
     globalAudioPropertiesClass = reinterpret_cast<jclass>(env->NewGlobalRef(audioPropertiesClass));
     env->DeleteLocalRef(audioPropertiesClass);
-    audioPropertiesInit = env->GetMethodID(globalAudioPropertiesClass, "<init>", "(IIIII)V");
+    audioPropertiesInit = env->GetMethodID(globalAudioPropertiesClass, "<init>", "(IIIIILjava/lang/String;)V");
 
     jclass setClass = env->FindClass("java/util/Set");
     globalSetClass = reinterpret_cast<jclass>(env->NewGlobalRef(setClass));
@@ -392,14 +450,17 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
 #if KTAGLIB_ENABLE_VERBOSE_LOGGING
         // Log audio properties
         __android_log_print(ANDROID_LOG_DEBUG, "kTagLib",
-            "Audio properties: duration=%dms, bitrate=%dkbps, sampleRate=%dHz, channels=%d, bitsPerSample=%d",
+            "Audio properties: duration=%dms, bitrate=%dkbps, sampleRate=%dHz, channels=%d, bitsPerSample=%d, codec=%s",
             audioProperties->lengthInMilliseconds(),
             audioProperties->bitrate(),
             audioProperties->sampleRate(),
             audioProperties->channels(),
-            bitsPerSample(audioProperties));
+            bitsPerSample(audioProperties),
+            codecName(audioProperties) != nullptr ? codecName(audioProperties) : "(null)");
 #endif
 
+        const char *codec = codecName(audioProperties);
+        jstring jCodec = codec != nullptr ? env->NewStringUTF(codec) : nullptr;
         jAudioProperties = env->NewObject(
                 globalAudioPropertiesClass,
                 audioPropertiesInit,
@@ -407,8 +468,10 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
                 (jint) audioProperties->bitrate(),
                 (jint) audioProperties->sampleRate(),
                 (jint) audioProperties->channels(),
-                (jint) bitsPerSample(audioProperties)
+                (jint) bitsPerSample(audioProperties),
+                jCodec
         );
+        if (jCodec != nullptr) env->DeleteLocalRef(jCodec);
     } else {
         __android_log_print(ANDROID_LOG_WARN, "kTagLib", "Audio properties not available");
     }

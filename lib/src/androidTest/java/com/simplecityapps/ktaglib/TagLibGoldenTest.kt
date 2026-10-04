@@ -21,7 +21,7 @@ class TagLibGoldenTest {
     // test_mpeg.cpp, TestMPEG::testAudioPropertiesXingHeaderCBR
     @Test
     fun mp3XingCbrProperties() {
-        assertAudio("lame_cbr.mp3", duration = 1887164, bitrate = 64, sampleRate = 44100, channels = 1)
+        assertAudio("lame_cbr.mp3", duration = 1887164, bitrate = 64, sampleRate = 44100, channels = 1, codec = "mp3")
     }
 
     // test_mpeg.cpp, TestMPEG::testExtendedHeader
@@ -37,7 +37,7 @@ class TagLibGoldenTest {
     // test_flac.cpp, TestFLAC::testAudioProperties
     @Test
     fun flacProperties() {
-        assertAudio("sinewave.flac", duration = 3550, bitrate = 145, sampleRate = 44100, channels = 2, bitsPerSample = 16)
+        assertAudio("sinewave.flac", duration = 3550, bitrate = 145, sampleRate = 44100, channels = 2, bitsPerSample = 16, codec = "flac")
     }
 
     // test_flac.cpp, TestFLAC::testReadPicture: one 150-byte PNG picture
@@ -52,7 +52,7 @@ class TagLibGoldenTest {
     // TestMP4::testCovrRead (two covers of 79 and 287 bytes; KTagLib returns the largest)
     @Test
     fun m4aPropertiesTagsAndCover() {
-        assertAudio("has-tags.m4a", duration = 3708, bitrate = 3, sampleRate = 44100, channels = 2, bitsPerSample = 16)
+        assertAudio("has-tags.m4a", duration = 3708, bitrate = 3, sampleRate = 44100, channels = 2, bitsPerSample = 16, codec = "aac")
         assertEquals(listOf("Test Artist"), read("has-tags.m4a").propertyMap["ARTIST"])
         val artwork = nonNull(kTagLib.artwork(TagLibCorpus.copy("has-tags.m4a")), "artwork of has-tags.m4a")
         assertEquals(287, artwork.size)
@@ -64,18 +64,19 @@ class TagLibGoldenTest {
         val properties = nonNull(read("flac96.m4a").audioProperties, "audio properties of flac96.m4a")
         assertEquals(96000, properties.sampleRate)
         assertEquals(24, properties.bitsPerSample)
+        assertEquals("flac", properties.codec) // FLAC in MP4
     }
 
     // test_ogg.cpp, TestOGG::testAudioProperties
     @Test
     fun oggVorbisProperties() {
-        assertAudio("empty.ogg", duration = 3685, bitrate = 1, sampleRate = 44100, channels = 2)
+        assertAudio("empty.ogg", duration = 3685, bitrate = 1, sampleRate = 44100, channels = 2, codec = "vorbis")
     }
 
     // test_opus.cpp, TestOpus::testAudioProperties and TestOpus::testReadComments
     @Test
     fun opusPropertiesAndComments() {
-        val metadata = assertAudio("correctness_gain_silent_output.opus", duration = 7737, bitrate = 36, sampleRate = 48000, channels = 1)
+        val metadata = assertAudio("correctness_gain_silent_output.opus", duration = 7737, bitrate = 36, sampleRate = 48000, channels = 1, codec = "opus")
         assertEquals(listOf("Xiph.Org Opus testvectormaker"), metadata.propertyMap["ENCODER"])
         assertFalse(metadata.propertyMap.containsKey("ARTIST"))
     }
@@ -83,38 +84,38 @@ class TagLibGoldenTest {
     // test_wav.cpp, TestWAV::testPCMProperties
     @Test
     fun wavProperties() {
-        assertAudio("empty.wav", duration = 3675, bitrate = 32, sampleRate = 1000, channels = 2, bitsPerSample = 16)
+        assertAudio("empty.wav", duration = 3675, bitrate = 32, sampleRate = 1000, channels = 2, bitsPerSample = 16, codec = "wav")
     }
 
     // test_aiff.cpp, TestAIFF::testAiffProperties
     @Test
     fun aiffProperties() {
-        assertAudio("empty.aiff", duration = 67, bitrate = 706, sampleRate = 44100, channels = 1, bitsPerSample = 16)
+        assertAudio("empty.aiff", duration = 67, bitrate = 706, sampleRate = 44100, channels = 1, bitsPerSample = 16, codec = "aiff")
     }
 
     // test_ape.cpp, TestAPE::testProperties399
     @Test
     fun apeProperties() {
-        assertAudio("mac-399.ape", duration = 3550, bitrate = 192, sampleRate = 44100, channels = 2, bitsPerSample = 16)
+        assertAudio("mac-399.ape", duration = 3550, bitrate = 192, sampleRate = 44100, channels = 2, bitsPerSample = 16, codec = "ape")
     }
 
     // test_wavpack.cpp, TestWavPack::testTaggedProperties
     @Test
     fun wavPackProperties() {
-        assertAudio("tagged.wv", duration = 3550, bitrate = 172, sampleRate = 44100, channels = 2, bitsPerSample = 16)
+        assertAudio("tagged.wv", duration = 3550, bitrate = 172, sampleRate = 44100, channels = 2, bitsPerSample = 16, codec = "wavpack")
     }
 
     // test_mpc.cpp, TestMPC::testPropertiesSV7
     @Test
     fun mpcProperties() {
-        assertAudio("click.mpc", duration = 40, bitrate = 318, sampleRate = 44100, channels = 2)
+        assertAudio("click.mpc", duration = 40, bitrate = 318, sampleRate = 44100, channels = 2, codec = "musepack")
     }
 
     private fun read(name: String): Metadata = nonNull(kTagLib.metadata(TagLibCorpus.copy(name)), "metadata of $name")
 
-    private fun assertAudio(name: String, duration: Int, bitrate: Int, sampleRate: Int, channels: Int, bitsPerSample: Int = 0): Metadata {
+    private fun assertAudio(name: String, duration: Int, bitrate: Int, sampleRate: Int, channels: Int, bitsPerSample: Int = 0, codec: String? = null): Metadata {
         val metadata = read(name)
-        assertEquals("audio properties of $name", AudioProperties(duration, bitrate, sampleRate, channels, bitsPerSample), metadata.audioProperties)
+        assertEquals("audio properties of $name", AudioProperties(duration, bitrate, sampleRate, channels, bitsPerSample, codec), metadata.audioProperties)
         return metadata
     }
 
