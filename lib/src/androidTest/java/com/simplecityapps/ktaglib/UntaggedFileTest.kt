@@ -29,7 +29,7 @@ class UntaggedFileTest {
         val file = copyAsset("untagged.wav")
 
         val metadata = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
-            kTagLib.getMetadata(pfd.detachFd(), file.name)
+            kTagLib.getMetadata(pfd.fd, file.name)
         }
 
         assertNotNull("getMetadata returned null for untagged file", metadata)

@@ -33,7 +33,7 @@ class MatroskaSegmentTitleTest {
             file.outputStream().use { output -> input.copyTo(output) }
         }
         val metadata = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
-            kTagLib.getMetadata(pfd.detachFd(), file.name)
+            kTagLib.getMetadata(pfd.fd, file.name)
         }
         assertNotNull("getMetadata returned null for $name", metadata)
         return metadata!!

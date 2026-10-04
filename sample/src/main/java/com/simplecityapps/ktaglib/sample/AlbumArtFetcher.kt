@@ -23,7 +23,7 @@ class AlbumArtFetcher(
             context.contentResolver.openFileDescriptor(model.path.toUri(), "r")?.use {
                 // Extract filename from path for better file type detection
                 val filename = model.path.toUri().lastPathSegment
-                val artwork = kTagLib.getArtwork(it.detachFd(), filename)
+                val artwork = kTagLib.getArtwork(it.fd, filename)
                 if (artwork != null) {
                     stream = ByteArrayInputStream(artwork)
                     callback.onDataReady(stream)

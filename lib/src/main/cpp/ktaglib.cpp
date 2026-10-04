@@ -1,11 +1,14 @@
 
 #include <jni.h>
+#include <cerrno>
 #include <climits>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <android/log.h>
@@ -381,19 +384,29 @@ static jobject toJStringList(JNIEnv *env, const TagLib::StringList &values) {
     return list.release();
 }
 
-// Opens a TagLib stream over the file descriptor, with the filename (if any) as a type hint.
-// Returns nullptr if the descriptor can't be opened.
+// Opens a TagLib stream over a duplicate of the file descriptor, with the filename (if any) as a
+// type hint. Returns nullptr if the descriptor can't be duplicated or opened.
 //
-// The stream takes ownership of the descriptor: once it has fdopen()ed it, ~FileStream fclose()s
-// it. Until then (and if fdopen fails) the descriptor is closed here, so it is closed on every path.
+// The caller keeps ownership of fileDescriptor; only the duplicate is closed here. The stream takes
+// ownership of the duplicate once it has fdopen()ed it (~FileStream fclose()s it). Until then, and
+// if fdopen fails, the duplicate is closed by UniqueFd, so it is closed on every path.
 static std::unique_ptr<TagLib::IOStream> openStream(JNIEnv *env, jint fileDescriptor, jstring filename, bool readOnly) {
-    UniqueFd fd(fileDescriptor);
-    std::unique_ptr<TagLib::IOStream> stream;
+    // Converted before duplicating, so a failure here has nothing to close.
+    TagLib::String name;
     if (filename != nullptr) {
-        const TagLib::String name = toTagLibString(env, filename);
+        name = toTagLibString(env, filename);
 #if KTAGLIB_ENABLE_VERBOSE_LOGGING
         __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "Filename hint provided: %s", name.toCString(true));
 #endif
+    }
+    UniqueFd fd(fcntl(fileDescriptor, F_DUPFD_CLOEXEC, 0));
+    if (fd.get() < 0) {
+        __android_log_print(ANDROID_LOG_WARN, "kTagLib", "Could not duplicate file descriptor %d: %s",
+                            fileDescriptor, strerror(errno));
+        return nullptr;
+    }
+    std::unique_ptr<TagLib::IOStream> stream;
+    if (filename != nullptr) {
         stream = std::make_unique<FileStreamWithName>(fd.get(), name, readOnly);
     } else {
         stream = std::make_unique<TagLib::FileStream>(fd.get(), readOnly);

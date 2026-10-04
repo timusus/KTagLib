@@ -18,6 +18,18 @@ See the sample app for an example of reading tags, using the Storage Access Fram
 
 ## Usage ##
 
+#### File descriptors ####
+
+Every function takes a file descriptor that **stays owned by the caller**: KTagLib works on its own duplicate of it and closes only that duplicate. Pass `pfd.fd` and let `use {}` close the `ParcelFileDescriptor`:
+
+```kotlin
+contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+    KTagLib().getMetadata(pfd.fd, filename)
+}
+```
+
+Don't pass `pfd.detachFd()`. Up to 2.2.0 the library took ownership of the descriptor and closed it, so callers detached it; now nothing would close the original, and it would leak.
+
 #### Read Tags ####
 
 Read the tags from a file descriptor:

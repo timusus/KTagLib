@@ -70,14 +70,14 @@ class WriteMetadataEdgeCasesTest {
 
     private fun write(file: File, properties: Map<String, List<String>>) {
         val written = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_WRITE).use { pfd ->
-            kTagLib.writeMetadata(pfd.detachFd(), properties, file.name)
+            kTagLib.writeMetadata(pfd.fd, properties, file.name)
         }
         assertTrue("writeMetadata failed", written)
     }
 
     private fun read(file: File): Metadata {
         val metadata = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
-            kTagLib.getMetadata(pfd.detachFd(), file.name)
+            kTagLib.getMetadata(pfd.fd, file.name)
         }
         return requireNotNull(metadata) { "getMetadata returned null for ${file.name}" }
     }

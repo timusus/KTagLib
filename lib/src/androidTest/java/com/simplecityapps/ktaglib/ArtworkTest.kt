@@ -29,7 +29,7 @@ class ArtworkTest {
         val file = copyAsset(asset)
 
         val artwork = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
-            kTagLib.getArtwork(pfd.detachFd(), file.name)
+            kTagLib.getArtwork(pfd.fd, file.name)
         }
         assertNotNull("getArtwork returned null for $asset", artwork)
         assertArrayEquals("largest picture in $asset", LARGEST_PICTURE, artwork)

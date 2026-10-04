@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Behavioural change: callers now keep ownership of the file descriptor.** `getMetadata`,
+  `getArtwork` and `writeMetadata` work on their own duplicate (`dup`) of `fileDescriptor` and
+  close only that, on every path. Close the original yourself: pass `pfd.fd` inside
+  `ParcelFileDescriptor.use {}`. Callers that still pass `pfd.detachFd()` now **leak** that
+  descriptor (previously the library closed it) and must switch to `pfd.fd`. The duplicate shares
+  the original's file offset, so the offset is unspecified after a call.
+
+### Fixed
+
+- A native exception (`std::bad_alloc` on a malformed file, for example) no longer aborts the
+  process: every JNI entry point catches it and returns null (or false), with no Java exception
+  left pending. The file descriptor is closed on every failure path, including ones where it
+  previously leaked (`fdopen` failing, for example).
+
 ## 2.2.0
 
 Source and binary compatible with 2.1.0 and 2.0.0.

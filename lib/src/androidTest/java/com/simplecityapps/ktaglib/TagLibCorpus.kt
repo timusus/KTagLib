@@ -34,14 +34,14 @@ object TagLibCorpus {
     }
 
     fun KTagLib.metadata(file: File): Metadata? = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
-        getMetadata(pfd.detachFd(), file.name)
+        getMetadata(pfd.fd, file.name)
     }
 
     fun KTagLib.artwork(file: File): ByteArray? = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
-        getArtwork(pfd.detachFd(), file.name)
+        getArtwork(pfd.fd, file.name)
     }
 
     fun KTagLib.write(file: File, properties: Map<String, List<String>>): Boolean = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_WRITE).use { pfd ->
-        writeMetadata(pfd.detachFd(), properties, file.name)
+        writeMetadata(pfd.fd, properties, file.name)
     }
 }

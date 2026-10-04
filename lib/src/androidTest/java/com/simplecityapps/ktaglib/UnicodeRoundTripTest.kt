@@ -49,12 +49,12 @@ class UnicodeRoundTripTest {
         val properties = values.mapValues { (_, value) -> listOf(value) }
 
         val written = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_WRITE).use { pfd ->
-            kTagLib.writeMetadata(pfd.detachFd(), properties, file.name)
+            kTagLib.writeMetadata(pfd.fd, properties, file.name)
         }
         assertTrue("writeMetadata failed for $asset", written)
 
         val metadata = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
-            kTagLib.getMetadata(pfd.detachFd(), file.name)
+            kTagLib.getMetadata(pfd.fd, file.name)
         }
         assertNotNull("getMetadata returned null for $asset", metadata)
 

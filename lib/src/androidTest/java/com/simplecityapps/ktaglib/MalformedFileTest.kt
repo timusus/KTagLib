@@ -83,13 +83,13 @@ class MalformedFileTest(private val asset: String) {
         val file = File(File(instrumentation.targetContext.cacheDir, "malformed").apply { mkdirs() }, name)
         file.writeBytes(bytes)
         val metadata = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
-            kTagLib.getMetadata(pfd.detachFd(), file.name)
+            kTagLib.getMetadata(pfd.fd, file.name)
         }
         val artwork = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
-            kTagLib.getArtwork(pfd.detachFd(), file.name)
+            kTagLib.getArtwork(pfd.fd, file.name)
         }
         val written = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_WRITE).use { pfd ->
-            kTagLib.writeMetadata(pfd.detachFd(), mapOf("TITLE" to listOf("Title")), file.name)
+            kTagLib.writeMetadata(pfd.fd, mapOf("TITLE" to listOf("Title")), file.name)
         }
         return Outcome(metadata, artwork, written)
     }
