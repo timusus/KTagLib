@@ -1,7 +1,12 @@
 
 #include <jni.h>
+#include <climits>
+#include <functional>
+#include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <android/log.h>
 
@@ -44,7 +49,7 @@
 class FileStreamWithName : public TagLib::IOStream {
 public:
     FileStreamWithName(int fileDescriptor, const TagLib::String &fileName, bool readOnly = true)
-        : m_stream(fileDescriptor, readOnly), m_name(fileName) {
+        : m_name(fileName), m_stream(fileDescriptor, readOnly) {
     }
 
     TagLib::FileName name() const override {
@@ -96,9 +101,96 @@ public:
     }
 
 private:
-    TagLib::FileStream m_stream;
+    // m_name is declared (and so constructed) first: once m_stream has fdopen()ed the descriptor
+    // it owns it, so nothing that can throw may run after it in the constructor.
     TagLib::String m_name;
+    TagLib::FileStream m_stream;
 };
+
+// Thrown when a JNI call leaves a Java exception pending. The exception is cleared first, so the
+// entry point's catch handler can return its failure value with nothing pending.
+class JniException : public std::runtime_error {
+public:
+    explicit JniException(const char *what) : std::runtime_error(what) {}
+};
+
+static void checkJni(JNIEnv *env, const char *what) {
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        throw JniException(what);
+    }
+}
+
+// Deletes a JNI local reference when it goes out of scope, including on an exception path.
+template<typename T>
+class LocalRef {
+public:
+    LocalRef(JNIEnv *env, T ref) : m_env(env), m_ref(ref) {}
+
+    ~LocalRef() {
+        if (m_ref != nullptr) m_env->DeleteLocalRef(m_ref);
+    }
+
+    LocalRef(const LocalRef &) = delete;
+    LocalRef &operator=(const LocalRef &) = delete;
+
+    T get() const { return m_ref; }
+
+    T release() {
+        T ref = m_ref;
+        m_ref = nullptr;
+        return ref;
+    }
+
+    void reset(T ref) {
+        if (m_ref != nullptr) m_env->DeleteLocalRef(m_ref);
+        m_ref = ref;
+    }
+
+private:
+    JNIEnv *m_env;
+    T m_ref;
+};
+
+// Closes a file descriptor when it goes out of scope, unless ownership was release()d.
+class UniqueFd {
+public:
+    explicit UniqueFd(int fd) : m_fd(fd) {}
+
+    ~UniqueFd() {
+        if (m_fd >= 0) close(m_fd);
+    }
+
+    UniqueFd(const UniqueFd &) = delete;
+    UniqueFd &operator=(const UniqueFd &) = delete;
+
+    int get() const { return m_fd; }
+
+    int release() {
+        int fd = m_fd;
+        m_fd = -1;
+        return fd;
+    }
+
+private:
+    int m_fd;
+};
+
+// Runs a JNI entry point body, turning any C++ exception (std::bad_alloc on a malformed file,
+// a JniException, ...) into the entry point's failure value, so it never unwinds into the VM and
+// aborts the process. No Java exception is left pending on return.
+template<typename R, typename Body>
+static R guarded(JNIEnv *env, const char *function, R failure, Body &&body) {
+    try {
+        return body();
+    } catch (const std::exception &e) {
+        __android_log_print(ANDROID_LOG_ERROR, "kTagLib", "%s failed: %s", function, e.what());
+    } catch (...) {
+        __android_log_print(ANDROID_LOG_ERROR, "kTagLib", "%s failed with an unknown exception", function);
+    }
+    env->ExceptionClear();
+    return failure;
+}
 
 jclass globalMetadataClass;
 jmethodID metadataInit;
@@ -238,16 +330,20 @@ static TagLib::String toTagLibString(JNIEnv *env, jstring str) {
         return TagLib::String();
     }
     const jsize length = env->GetStringLength(str);
+    checkJni(env, "GetStringLength");
     const jchar *chars = env->GetStringChars(str, nullptr);
     if (chars == nullptr) {
-        return TagLib::String();
+        checkJni(env, "GetStringChars");
+        throw JniException("GetStringChars returned null");
     }
+    // Release the chars even if the ByteVector allocation throws.
+    std::unique_ptr<const jchar, std::function<void(const jchar *)>> charsGuard(
+            chars, [env, str](const jchar *c) { env->ReleaseStringChars(str, c); });
     TagLib::ByteVector bytes(static_cast<unsigned int>(length) * 2, 0);
     for (jsize i = 0; i < length; i++) {
         bytes[i * 2] = static_cast<char>(chars[i] & 0xFF);
         bytes[i * 2 + 1] = static_cast<char>((chars[i] >> 8) & 0xFF);
     }
-    env->ReleaseStringChars(str, chars);
     return TagLib::String(bytes, TagLib::String::UTF16LE);
 }
 
@@ -264,7 +360,76 @@ static jstring toJString(JNIEnv *env, const TagLib::String &str) {
                 static_cast<unsigned char>(bytes[i * 2]) |
                 (static_cast<unsigned char>(bytes[i * 2 + 1]) << 8));
     }
-    return env->NewString(chars.data(), static_cast<jsize>(length));
+    jstring result = env->NewString(chars.data(), static_cast<jsize>(length));
+    checkJni(env, "NewString");
+    if (result == nullptr) throw JniException("NewString returned null");
+    return result;
+}
+
+// Creates a java.util.ArrayList holding the given values.
+static jobject toJStringList(JNIEnv *env, const TagLib::StringList &values) {
+    LocalRef<jobject> list(env, env->NewObject(globalArrayListClass, arrayListInit, (jint) values.size()));
+    checkJni(env, "new ArrayList");
+    for (const auto &value : values) {
+#if KTAGLIB_ENABLE_VERBOSE_LOGGING
+        __android_log_print(ANDROID_LOG_VERBOSE, "kTagLib", "  Value: '%s'", value.toCString(true));
+#endif
+        LocalRef<jstring> jValue(env, toJString(env, value));
+        env->CallBooleanMethod(list.get(), addListElement, jValue.get());
+        checkJni(env, "ArrayList.add");
+    }
+    return list.release();
+}
+
+// Opens a TagLib stream over the file descriptor, with the filename (if any) as a type hint.
+// Returns nullptr if the descriptor can't be opened.
+//
+// The stream takes ownership of the descriptor: once it has fdopen()ed it, ~FileStream fclose()s
+// it. Until then (and if fdopen fails) the descriptor is closed here, so it is closed on every path.
+static std::unique_ptr<TagLib::IOStream> openStream(JNIEnv *env, jint fileDescriptor, jstring filename, bool readOnly) {
+    UniqueFd fd(fileDescriptor);
+    std::unique_ptr<TagLib::IOStream> stream;
+    if (filename != nullptr) {
+        const TagLib::String name = toTagLibString(env, filename);
+#if KTAGLIB_ENABLE_VERBOSE_LOGGING
+        __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "Filename hint provided: %s", name.toCString(true));
+#endif
+        stream = std::make_unique<FileStreamWithName>(fd.get(), name, readOnly);
+    } else {
+        stream = std::make_unique<TagLib::FileStream>(fd.get(), readOnly);
+    }
+    if (!stream->isOpen()) {
+        __android_log_print(ANDROID_LOG_WARN, "kTagLib", "Could not open file descriptor %d", fileDescriptor);
+        return nullptr;
+    }
+    fd.release();
+    return stream;
+}
+
+// Looks up a class and keeps a global reference to it, or returns nullptr (with any pending
+// exception cleared) if it can't be found.
+static jclass findGlobalClass(JNIEnv *env, const char *name) {
+    jclass localClass = env->FindClass(name);
+    if (localClass == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        __android_log_print(ANDROID_LOG_ERROR, "kTagLib", "JNI_OnLoad: class %s not found", name);
+        return nullptr;
+    }
+    auto globalClass = reinterpret_cast<jclass>(env->NewGlobalRef(localClass));
+    env->DeleteLocalRef(localClass);
+    return globalClass;
+}
+
+// Looks up a method, or returns nullptr (with any pending exception cleared) if it can't be found.
+static jmethodID findMethod(JNIEnv *env, jclass clazz, const char *name, const char *signature) {
+    if (clazz == nullptr) return nullptr;
+    jmethodID method = env->GetMethodID(clazz, name, signature);
+    if (method == nullptr || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        __android_log_print(ANDROID_LOG_ERROR, "kTagLib", "JNI_OnLoad: method %s%s not found", name, signature);
+        return nullptr;
+    }
+    return method;
 }
 
 extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
@@ -273,101 +438,111 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
         return JNI_ERR;
     }
 
-    jclass metadataClass = env->FindClass("com/simplecityapps/ktaglib/Metadata");
-    globalMetadataClass = reinterpret_cast<jclass>(env->NewGlobalRef(metadataClass));
-    env->DeleteLocalRef(metadataClass);
-    metadataInit = env->GetMethodID(globalMetadataClass, "<init>", "(Ljava/util/Map;Lcom/simplecityapps/ktaglib/AudioProperties;)V");
+    // A missing class or method means a mismatched Kotlin/native build; fail the load (System.loadLibrary
+    // throws UnsatisfiedLinkError) rather than crash on a null ID later.
+    return guarded(env, "JNI_OnLoad", (jint) JNI_ERR, [&]() -> jint {
+        globalMetadataClass = findGlobalClass(env, "com/simplecityapps/ktaglib/Metadata");
+        metadataInit = findMethod(env, globalMetadataClass, "<init>", "(Ljava/util/Map;Lcom/simplecityapps/ktaglib/AudioProperties;)V");
 
-    jclass audioPropertiesClass = env->FindClass("com/simplecityapps/ktaglib/AudioProperties");
-    globalAudioPropertiesClass = reinterpret_cast<jclass>(env->NewGlobalRef(audioPropertiesClass));
-    env->DeleteLocalRef(audioPropertiesClass);
-    audioPropertiesInit = env->GetMethodID(globalAudioPropertiesClass, "<init>", "(IIIIILjava/lang/String;)V");
+        globalAudioPropertiesClass = findGlobalClass(env, "com/simplecityapps/ktaglib/AudioProperties");
+        audioPropertiesInit = findMethod(env, globalAudioPropertiesClass, "<init>", "(IIIIILjava/lang/String;)V");
 
-    jclass setClass = env->FindClass("java/util/Set");
-    globalSetClass = reinterpret_cast<jclass>(env->NewGlobalRef(setClass));
-    env->DeleteLocalRef(setClass);
+        globalSetClass = findGlobalClass(env, "java/util/Set");
+        globalIteratorClass = findGlobalClass(env, "java/util/Iterator");
+        getIterator = findMethod(env, globalSetClass, "iterator", "()Ljava/util/Iterator;");
+        iteratorHasNext = findMethod(env, globalIteratorClass, "hasNext", "()Z");
+        iteratorNextEntry = findMethod(env, globalIteratorClass, "next", "()Ljava/lang/Object;");
 
-    jclass iteratorClass = env->FindClass("java/util/Iterator");
-    globalIteratorClass = reinterpret_cast<jclass>(env->NewGlobalRef(iteratorClass));
-    env->DeleteLocalRef(iteratorClass);
+        globalHashMapClass = findGlobalClass(env, "java/util/HashMap");
+        hashMapInit = findMethod(env, globalHashMapClass, "<init>", "()V");
+        addProperty = findMethod(env, globalHashMapClass, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
 
-    getIterator = env->GetMethodID(globalSetClass, "iterator", "()Ljava/util/Iterator;");
-    iteratorHasNext = env->GetMethodID(globalIteratorClass, "hasNext", "()Z");
-    iteratorNextEntry = env->GetMethodID(globalIteratorClass, "next", "()Ljava/lang/Object;");
+        globalMapClass = findGlobalClass(env, "java/util/Map");
+        getEntrySet = findMethod(env, globalMapClass, "entrySet", "()Ljava/util/Set;");
 
-    jclass hashMapClass = env->FindClass("java/util/HashMap");
-    globalHashMapClass = reinterpret_cast<jclass>(env->NewGlobalRef(hashMapClass));
-    env->DeleteLocalRef(hashMapClass);
-    hashMapInit = env->GetMethodID(globalHashMapClass, "<init>", "()V");
-    addProperty = env->GetMethodID(globalHashMapClass, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+        globalMapEntryClass = findGlobalClass(env, "java/util/Map$Entry");
+        getPropertyKey = findMethod(env, globalMapEntryClass, "getKey", "()Ljava/lang/Object;");
+        getPropertyValue = findMethod(env, globalMapEntryClass, "getValue", "()Ljava/lang/Object;");
 
-    jclass mapClass = env->FindClass("java/util/Map");
-    globalMapClass = reinterpret_cast<jclass>(env->NewGlobalRef(mapClass));
-    env->DeleteLocalRef(mapClass);
-    getEntrySet = env->GetMethodID(globalMapClass, "entrySet", "()Ljava/util/Set;");
+        globalArrayListClass = findGlobalClass(env, "java/util/ArrayList");
+        arrayListInit = findMethod(env, globalArrayListClass, "<init>", "(I)V");
+        addListElement = findMethod(env, globalArrayListClass, "add", "(Ljava/lang/Object;)Z");
 
-    jclass mapEntryClass = env->FindClass("java/util/Map$Entry");
-    globalMapEntryClass = reinterpret_cast<jclass>(env->NewGlobalRef(mapEntryClass));
-    env->DeleteLocalRef(mapEntryClass);
-    getPropertyKey = env->GetMethodID(globalMapEntryClass, "getKey", "()Ljava/lang/Object;");
-    getPropertyValue = env->GetMethodID(globalMapEntryClass, "getValue", "()Ljava/lang/Object;");
+        globalListClass = findGlobalClass(env, "java/util/List");
+        getListElement = findMethod(env, globalListClass, "get", "(I)Ljava/lang/Object;");
+        getListSize = findMethod(env, globalListClass, "size", "()I");
 
-    jclass arrayListClass = env->FindClass("java/util/ArrayList");
-    globalArrayListClass = reinterpret_cast<jclass>(env->NewGlobalRef(arrayListClass));
-    env->DeleteLocalRef(arrayListClass);
-    arrayListInit = env->GetMethodID(globalArrayListClass, "<init>", "(I)V");
-    addListElement = env->GetMethodID(globalArrayListClass, "add", "(Ljava/lang/Object;)Z");
+        const void *required[] = {
+                metadataInit, audioPropertiesInit, getIterator, iteratorHasNext, iteratorNextEntry,
+                hashMapInit, addProperty, getEntrySet, getPropertyKey, getPropertyValue,
+                arrayListInit, addListElement, getListElement, getListSize,
+        };
+        for (const void *id : required) {
+            if (id == nullptr) return JNI_ERR;
+        }
 
-    jclass listClass = env->FindClass("java/util/List");
-    globalListClass = reinterpret_cast<jclass>(env->NewGlobalRef(listClass));
-    env->DeleteLocalRef(listClass);
-    getListElement = env->GetMethodID(globalListClass, "get", "(I)Ljava/lang/Object;");
-    getListSize = env->GetMethodID(globalListClass, "size", "()I");
+        TagLib::setDebugListener(&listener);
 
-    TagLib::setDebugListener(&listener);;
-
-    return JNI_VERSION_1_6;
+        return JNI_VERSION_1_6;
+    });
 }
 
 extern "C" void JNI_OnUnload(JavaVM *vm, void *reserved) {
     JNIEnv *env;
-    vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
+    if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK) {
+        return;
+    }
 
-    env->DeleteGlobalRef(globalMetadataClass);
-    env->DeleteGlobalRef(globalAudioPropertiesClass);
-    env->DeleteGlobalRef(globalHashMapClass);
-    env->DeleteGlobalRef(globalMapEntryClass);
-    env->DeleteGlobalRef(globalIteratorClass);
-    env->DeleteGlobalRef(globalArrayListClass);
-    env->DeleteGlobalRef(globalMapClass);
-    env->DeleteGlobalRef(globalListClass);
-    env->DeleteGlobalRef(globalSetClass);
+    for (jclass globalClass : {globalMetadataClass, globalAudioPropertiesClass, globalHashMapClass,
+                               globalMapEntryClass, globalIteratorClass, globalArrayListClass,
+                               globalMapClass, globalListClass, globalSetClass}) {
+        if (globalClass != nullptr) env->DeleteGlobalRef(globalClass);
+    }
 
     TagLib::setDebugListener(nullptr);
 }
 
-extern "C"
-JNIEXPORT jobject JNICALL
-Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, jint file_descriptor, jstring filename) {
+// Creates a com.simplecityapps.ktaglib.AudioProperties from TagLib's audio properties.
+static jobject toJAudioProperties(JNIEnv *env, const TagLib::AudioProperties *audioProperties) {
+#if KTAGLIB_ENABLE_VERBOSE_LOGGING
+    // Log audio properties
+    __android_log_print(ANDROID_LOG_DEBUG, "kTagLib",
+        "Audio properties: duration=%dms, bitrate=%dkbps, sampleRate=%dHz, channels=%d, bitsPerSample=%d, codec=%s",
+        audioProperties->lengthInMilliseconds(),
+        audioProperties->bitrate(),
+        audioProperties->sampleRate(),
+        audioProperties->channels(),
+        bitsPerSample(audioProperties),
+        codecName(audioProperties) != nullptr ? codecName(audioProperties) : "(null)");
+#endif
+
+    const char *codec = codecName(audioProperties);
+    LocalRef<jstring> jCodec(env, codec != nullptr ? env->NewStringUTF(codec) : nullptr);
+    checkJni(env, "NewStringUTF");
+    jobject jAudioProperties = env->NewObject(
+            globalAudioPropertiesClass,
+            audioPropertiesInit,
+            (jint) audioProperties->lengthInMilliseconds(),
+            (jint) audioProperties->bitrate(),
+            (jint) audioProperties->sampleRate(),
+            (jint) audioProperties->channels(),
+            (jint) bitsPerSample(audioProperties),
+            jCodec.get()
+    );
+    checkJni(env, "new AudioProperties");
+    return jAudioProperties;
+}
+
+static jobject getMetadata(JNIEnv *env, jint file_descriptor, jstring filename) {
 
 #if KTAGLIB_ENABLE_VERBOSE_LOGGING
     // Log function entry with file descriptor
     __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "getMetadata: Opening file descriptor %d", file_descriptor);
 #endif
 
-    // Create stream - use custom wrapper if filename provided, otherwise use standard FileStream
-    std::unique_ptr<TagLib::IOStream> stream;
-    if (filename != nullptr) {
-        const TagLib::String filenameStr = toTagLibString(env, filename);
-#if KTAGLIB_ENABLE_VERBOSE_LOGGING
-        __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "Filename hint provided: %s", filenameStr.toCString(true));
-#endif
-        stream = std::make_unique<FileStreamWithName>(file_descriptor, filenameStr, true);
-    } else {
-#if KTAGLIB_ENABLE_VERBOSE_LOGGING
-        __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "No filename hint provided");
-#endif
-        stream = std::make_unique<TagLib::FileStream>(file_descriptor, true);
+    std::unique_ptr<TagLib::IOStream> stream = openStream(env, file_descriptor, filename, true);
+    if (!stream) {
+        return nullptr;
     }
 
 #if KTAGLIB_ENABLE_VERBOSE_LOGGING
@@ -387,7 +562,8 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
     __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "FileRef created successfully - file type recognized");
 #endif
 
-    jobject jPropertyMap = env->NewObject(globalHashMapClass, hashMapInit);
+    LocalRef<jobject> jPropertyMap(env, env->NewObject(globalHashMapClass, hashMapInit));
+    checkJni(env, "new HashMap");
     bool hasTitle = false;
 
     // A recognized file without a tag (e.g. a bare WAV with no ID3) still has audio properties
@@ -416,9 +592,6 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
         }
 
         for (auto &taglibProperty : taglibProperties) {
-            // Convert property key once and reuse
-            jstring key = toJString(env, taglibProperty.first);
-
 #if KTAGLIB_ENABLE_VERBOSE_LOGGING
             // Log each property key and value count
             __android_log_print(ANDROID_LOG_VERBOSE, "kTagLib",
@@ -432,25 +605,13 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
                 hasTitle = true;
             }
 
-            jobject values = env->NewObject(globalArrayListClass, arrayListInit, (jint) 0);
-            for (auto &value : taglibProperty.second) {
-#if KTAGLIB_ENABLE_VERBOSE_LOGGING
-                // Log individual values
-                __android_log_print(ANDROID_LOG_VERBOSE, "kTagLib",
-                    "  Value: '%s'", value.toCString(true));
-#endif
-                jstring jValue = toJString(env, value);
-                env->CallBooleanMethod(values, addListElement, jValue);
-                env->DeleteLocalRef(jValue);
-            }
-            jobject previous = env->CallObjectMethod(jPropertyMap, addProperty, key, values);
-            env->DeleteLocalRef(previous);
-            env->DeleteLocalRef(values);
-            env->DeleteLocalRef(key);
+            LocalRef<jstring> key(env, toJString(env, taglibProperty.first));
+            LocalRef<jobject> values(env, toJStringList(env, taglibProperty.second));
+            LocalRef<jobject> previous(env, env->CallObjectMethod(jPropertyMap.get(), addProperty, key.get(), values.get()));
+            checkJni(env, "HashMap.put");
         }
     }
 
-    jobject jAudioProperties = nullptr;
     auto audioProperties = fileRef.audioProperties();
 
     // TagLib's Matroska property map omits the Segment Info title, so offer it as TITLE when the
@@ -459,44 +620,16 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
         if (auto mkvProperties = dynamic_cast<const TagLib::Matroska::Properties *>(audioProperties)) {
             const TagLib::String segmentTitle = mkvProperties->title();
             if (!segmentTitle.isEmpty()) {
-                jstring key = toJString(env, TagLib::String("TITLE"));
-                jobject values = env->NewObject(globalArrayListClass, arrayListInit, (jint) 1);
-                jstring jValue = toJString(env, segmentTitle);
-                env->CallBooleanMethod(values, addListElement, jValue);
-                jobject previous = env->CallObjectMethod(jPropertyMap, addProperty, key, values);
-                env->DeleteLocalRef(previous);
-                env->DeleteLocalRef(jValue);
-                env->DeleteLocalRef(values);
-                env->DeleteLocalRef(key);
+                LocalRef<jstring> key(env, toJString(env, TagLib::String("TITLE")));
+                LocalRef<jobject> values(env, toJStringList(env, TagLib::StringList(segmentTitle)));
+                LocalRef<jobject> previous(env, env->CallObjectMethod(jPropertyMap.get(), addProperty, key.get(), values.get()));
+                checkJni(env, "HashMap.put");
             }
         }
     }
+    LocalRef<jobject> jAudioProperties(env, nullptr);
     if (audioProperties != nullptr) {
-#if KTAGLIB_ENABLE_VERBOSE_LOGGING
-        // Log audio properties
-        __android_log_print(ANDROID_LOG_DEBUG, "kTagLib",
-            "Audio properties: duration=%dms, bitrate=%dkbps, sampleRate=%dHz, channels=%d, bitsPerSample=%d, codec=%s",
-            audioProperties->lengthInMilliseconds(),
-            audioProperties->bitrate(),
-            audioProperties->sampleRate(),
-            audioProperties->channels(),
-            bitsPerSample(audioProperties),
-            codecName(audioProperties) != nullptr ? codecName(audioProperties) : "(null)");
-#endif
-
-        const char *codec = codecName(audioProperties);
-        jstring jCodec = codec != nullptr ? env->NewStringUTF(codec) : nullptr;
-        jAudioProperties = env->NewObject(
-                globalAudioPropertiesClass,
-                audioPropertiesInit,
-                (jint) audioProperties->lengthInMilliseconds(),
-                (jint) audioProperties->bitrate(),
-                (jint) audioProperties->sampleRate(),
-                (jint) audioProperties->channels(),
-                (jint) bitsPerSample(audioProperties),
-                jCodec
-        );
-        if (jCodec != nullptr) env->DeleteLocalRef(jCodec);
+        jAudioProperties.reset(toJAudioProperties(env, audioProperties));
     } else {
         __android_log_print(ANDROID_LOG_WARN, "kTagLib", "Audio properties not available");
     }
@@ -504,138 +637,152 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
 #if KTAGLIB_ENABLE_VERBOSE_LOGGING
     __android_log_print(ANDROID_LOG_DEBUG, "kTagLib", "Successfully created Metadata object");
 #endif
-    return env->NewObject(globalMetadataClass, metadataInit, jPropertyMap, jAudioProperties);
+    jobject metadata = env->NewObject(globalMetadataClass, metadataInit, jPropertyMap.get(), jAudioProperties.get());
+    checkJni(env, "new Metadata");
+    return metadata;
+}
+
+extern "C"
+JNIEXPORT jobject JNICALL
+Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, jint file_descriptor, jstring filename) {
+    return guarded(env, "getMetadata", (jobject) nullptr, [&] { return getMetadata(env, file_descriptor, filename); });
+}
+
+static jboolean writeMetadata(JNIEnv *env, jint file_descriptor, jobject properties, jstring filename) {
+
+    std::unique_ptr<TagLib::IOStream> stream = openStream(env, file_descriptor, filename, false);
+    if (!stream) {
+        return JNI_FALSE;
+    }
+    // Only reachable from Java callers.
+    if (properties == nullptr) {
+        __android_log_print(ANDROID_LOG_WARN, "kTagLib", "writeMetadata: properties is null");
+        return JNI_FALSE;
+    }
+
+    TagLib::FileRef fileRef(stream.get(), false);
+
+    if (fileRef.isNull() || !fileRef.tag()) {
+        return JNI_FALSE;
+    }
+
+    TagLib::PropertyMap taglibProperties = fileRef.properties();
+    LocalRef<jobject> entrySet(env, env->CallObjectMethod(properties, getEntrySet));
+    checkJni(env, "Map.entrySet");
+    LocalRef<jobject> iterator(env, env->CallObjectMethod(entrySet.get(), getIterator));
+    checkJni(env, "Set.iterator");
+
+    while (true) {
+        const jboolean hasNext = env->CallBooleanMethod(iterator.get(), iteratorHasNext);
+        checkJni(env, "Iterator.hasNext");
+        if (!hasNext) break;
+
+        LocalRef<jobject> entry(env, env->CallObjectMethod(iterator.get(), iteratorNextEntry));
+        checkJni(env, "Iterator.next");
+        LocalRef<jstring> key(env, (jstring) env->CallObjectMethod(entry.get(), getPropertyKey));
+        checkJni(env, "Map.Entry.getKey");
+        LocalRef<jobject> values(env, env->CallObjectMethod(entry.get(), getPropertyValue));
+        checkJni(env, "Map.Entry.getValue");
+
+        // A null key has no valid tag field to write to, and a null value list has no
+        // meaning - skip either (only reachable from Java callers) rather than guess.
+        if (key.get() == nullptr || values.get() == nullptr) {
+            __android_log_print(ANDROID_LOG_WARN, "kTagLib",
+                "writeMetadata: skipping property with a null %s", key.get() == nullptr ? "key" : "value list");
+            continue;
+        }
+
+        const jint len = env->CallIntMethod(values.get(), getListSize);
+        checkJni(env, "List.size");
+        TagLib::StringList stringList;
+        for (jint i = 0; i < len; i++) {
+            LocalRef<jstring> element(env, (jstring) env->CallObjectMethod(values.get(), getListElement, i));
+            checkJni(env, "List.get");
+            // Null elements (Java callers only) are dropped.
+            if (element.get() != nullptr) {
+                stringList.append(toTagLibString(env, element.get()));
+            }
+        }
+        // An empty list removes the field. Erasing the key (rather than storing an empty
+        // StringList) makes that uniform: setProperties removes every key absent from the map
+        // in all formats, whereas an empty value list is handled per format (WAV keeps the
+        // field).
+        const TagLib::String tagKey = toTagLibString(env, key.get());
+        if (stringList.isEmpty()) {
+            taglibProperties.erase(tagKey);
+        } else {
+            taglibProperties.replace(tagKey, stringList);
+        }
+    }
+
+    fileRef.setProperties(taglibProperties);
+    return fileRef.save() ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C"
 JNIEXPORT jboolean JNICALL
 Java_com_simplecityapps_ktaglib_KTagLib_writeMetadata(JNIEnv *env, jclass clazz, jint file_descriptor, jobject properties, jstring filename) {
-
-    // Create stream - use custom wrapper if filename provided, otherwise use standard FileStream
-    std::unique_ptr<TagLib::IOStream> stream;
-    if (filename != nullptr) {
-        stream = std::make_unique<FileStreamWithName>(file_descriptor, toTagLibString(env, filename), false);
-    } else {
-        stream = std::make_unique<TagLib::FileStream>(file_descriptor, false);
-    }
-
-    TagLib::FileRef fileRef(stream.get(), false);
-
-    jboolean isSuccessful = false;
-
-    if (!fileRef.isNull() && fileRef.tag()) {
-        TagLib::PropertyMap taglibProperties = fileRef.properties();
-        jobject entrySet = env->CallObjectMethod(properties, getEntrySet);
-        jobject iterator = env->CallObjectMethod(entrySet, getIterator);
-
-        while (env->CallBooleanMethod(iterator, iteratorHasNext)) {
-            jobject entry = env->CallObjectMethod(iterator, iteratorNextEntry);
-            auto key = (jstring) env->CallObjectMethod(entry, getPropertyKey);
-            jobject values = env->CallObjectMethod(entry, getPropertyValue);
-
-            // A null key has no valid tag field to write to, and a null value list has no
-            // meaning - skip either (only reachable from Java callers) rather than guess.
-            if (key == nullptr || values == nullptr) {
-                __android_log_print(ANDROID_LOG_WARN, "kTagLib",
-                    "writeMetadata: skipping property with a null %s", key == nullptr ? "key" : "value list");
-                if (key != nullptr) env->DeleteLocalRef(key);
-                if (values != nullptr) env->DeleteLocalRef(values);
-                env->DeleteLocalRef(entry);
-                continue;
-            }
-
-            jint len = env->CallIntMethod(values, getListSize);
-            TagLib::StringList stringList;
-            for (jint i = 0; i < len; i++) {
-                auto element = (jstring) env->CallObjectMethod(values, getListElement, i);
-                // Null elements (Java callers only) are dropped.
-                if (element != nullptr) {
-                    stringList.append(toTagLibString(env, element));
-                    env->DeleteLocalRef(element);
-                }
-            }
-            // An empty list removes the field. Erasing the key (rather than storing an empty
-            // StringList) makes that uniform: setProperties removes every key absent from the map
-            // in all formats, whereas an empty value list is handled per format (WAV keeps the
-            // field).
-            const TagLib::String tagKey = toTagLibString(env, key);
-            if (stringList.isEmpty()) {
-                taglibProperties.erase(tagKey);
-            } else {
-                taglibProperties.replace(tagKey, stringList);
-            }
-            env->DeleteLocalRef(values);
-            env->DeleteLocalRef(key);
-            env->DeleteLocalRef(entry);
-        }
-        env->DeleteLocalRef(iterator);
-        env->DeleteLocalRef(entrySet);
-
-        fileRef.setProperties(taglibProperties);
-        isSuccessful = fileRef.save();
-    }
-
-    return isSuccessful;
+    return guarded(env, "writeMetadata", (jboolean) JNI_FALSE, [&] { return writeMetadata(env, file_descriptor, properties, filename); });
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL
-Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jclass clazz, jint file_descriptor, jstring filename) {
+static jbyteArray getArtwork(JNIEnv *env, jint file_descriptor, jstring filename) {
 
-    // Create stream - use custom wrapper if filename provided, otherwise use standard FileStream
-    std::unique_ptr<TagLib::IOStream> stream;
-    if (filename != nullptr) {
-        stream = std::make_unique<FileStreamWithName>(file_descriptor, toTagLibString(env, filename), true);
-    } else {
-        stream = std::make_unique<TagLib::FileStream>(file_descriptor, true);
+    std::unique_ptr<TagLib::IOStream> stream = openStream(env, file_descriptor, filename, true);
+    if (!stream) {
+        return nullptr;
     }
 
     TagLib::FileRef fileRef(stream.get(), false);
 
-    jbyteArray result = nullptr;
+    if (fileRef.isNull()) {
+        return nullptr;
+    }
 
-    if (!fileRef.isNull()) {
-        TagLib::ByteVector byteVector;
+    TagLib::ByteVector byteVector;
 
-        if (auto *flacFile = dynamic_cast<TagLib::FLAC::File *>(fileRef.file())) {
-            byteVector = largestPicture(flacFile->pictureList());
-        } else if (auto *opusFile = dynamic_cast<TagLib::Ogg::Opus::File *>(fileRef.file())) {
-            TagLib::Ogg::XiphComment *tag = opusFile->tag();
-            if (tag != nullptr) {
-                byteVector = largestPicture(tag->pictureList());
-            }
-        } else {
-            TagLib::Tag *tag = fileRef.tag();
-            if (tag != nullptr) {
-                TagLib::List<TagLib::VariantMap> pictureMap = tag->complexProperties("PICTURE");
-                if (!pictureMap.isEmpty()) {
-                    // Finds the largest picture by byte size
-                    size_t picSize = 0;
-                    for (auto const &property: pictureMap) {
-                        for (auto const &[key, value]: property) {
-                            if (value.type() == TagLib::Variant::ByteVector) {
-                                auto i = value.value<TagLib::ByteVector>();
-                                size_t size = i.size();
-                                if (size > picSize) {
-                                    byteVector = i;
-                                    picSize = size;
-                                }
-                            }
+    if (auto *flacFile = dynamic_cast<TagLib::FLAC::File *>(fileRef.file())) {
+        byteVector = largestPicture(flacFile->pictureList());
+    } else if (auto *opusFile = dynamic_cast<TagLib::Ogg::Opus::File *>(fileRef.file())) {
+        TagLib::Ogg::XiphComment *tag = opusFile->tag();
+        if (tag != nullptr) {
+            byteVector = largestPicture(tag->pictureList());
+        }
+    } else {
+        TagLib::Tag *tag = fileRef.tag();
+        if (tag != nullptr) {
+            TagLib::List<TagLib::VariantMap> pictureMap = tag->complexProperties("PICTURE");
+            // Finds the largest picture by byte size
+            size_t picSize = 0;
+            for (auto const &property: pictureMap) {
+                for (auto const &[key, value]: property) {
+                    if (value.type() == TagLib::Variant::ByteVector) {
+                        auto i = value.value<TagLib::ByteVector>();
+                        size_t size = i.size();
+                        if (size > picSize) {
+                            byteVector = i;
+                            picSize = size;
                         }
                     }
                 }
             }
         }
-
-        if (!byteVector.isEmpty()) {
-            size_t len = byteVector.size();
-            if (len > 0) {
-                jbyteArray arr = env->NewByteArray(len);
-                char *data = byteVector.data();
-                env->SetByteArrayRegion(arr, 0, len, reinterpret_cast<jbyte *>(data));
-                result = arr;
-            }
-        }
     }
 
-    return result;
+    const size_t len = byteVector.size();
+    if (len == 0 || len > INT_MAX) {
+        return nullptr;
+    }
+    LocalRef<jbyteArray> arr(env, env->NewByteArray(static_cast<jsize>(len)));
+    checkJni(env, "NewByteArray");
+    if (arr.get() == nullptr) {
+        return nullptr;
+    }
+    env->SetByteArrayRegion(arr.get(), 0, static_cast<jsize>(len), reinterpret_cast<const jbyte *>(byteVector.data()));
+    checkJni(env, "SetByteArrayRegion");
+    return arr.release();
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_simplecityapps_ktaglib_KTagLib_getArtwork(JNIEnv *env, jclass clazz, jint file_descriptor, jstring filename) {
+    return guarded(env, "getArtwork", (jbyteArray) nullptr, [&] { return getArtwork(env, file_descriptor, filename); });
 }
