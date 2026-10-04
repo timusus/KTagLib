@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.2.0
+
+Source and binary compatible with 2.1.0 and 2.0.0.
+
+### Added
+
+- `AudioProperties.codec`: the lowercase name of the audio codec (not the container, so an `.m4a`
+  is `"aac"` or `"alac"`), or null when it is unknown or can't be detected. Values: `"aac"`,
+  `"alac"`, `"ac3"`, `"eac3"`, `"dts"`, `"flac"`, `"wav"`, `"aiff"`, `"ape"`, `"wavpack"`, `"dsd"`
+  (DSF and DSDIFF), `"mp1"`, `"mp2"`, `"mp3"`, `"vorbis"`, `"opus"`, `"speex"`, `"musepack"`,
+  `"tta"`, `"shorten"`, `"wma"`, `"wmapro"` and `"wmalossless"`. Matroska files report `"flac"`,
+  `"aac"`, `"alac"`, `"opus"`, `"vorbis"` or `"mp3"` when the track's codec ID maps to one. It
+  defaults to null in the constructor, and the 2.0 and 2.1 constructors and `copy` are kept for
+  binary compatibility.
+- Matroska files without a track or tag-level title now report the Segment Info title as `TITLE`,
+  rather than leaving it to fall back to the file name.
+
 ## 2.1.0
 
 Source and binary compatible with 2.0.0.
