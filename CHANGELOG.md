@@ -10,6 +10,9 @@
   `ParcelFileDescriptor.use {}`. Callers that still pass `pfd.detachFd()` now **leak** that
   descriptor (previously the library closed it) and must switch to `pfd.fd`. The duplicate shares
   the original's file offset, so the offset is unspecified after a call.
+- The release native library is built as CMake `Release` with `-O3`, link-time optimisation
+  across KTagLib and TagLib, and hidden visibility (only `JNI_OnLoad`, `JNI_OnUnload` and the
+  `Java_*` entry points are exported), which makes `libktaglib.so` about 22-27% smaller.
 
 ### Fixed
 

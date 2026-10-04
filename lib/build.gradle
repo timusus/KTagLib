@@ -21,9 +21,20 @@ android {
 
     namespace = "com.simplecityapps.ktaglib"
 
+    // ./gradlew :lib:connectedAndroidTest -PtestBuildType=release runs the instrumented tests
+    // against the release native build (LTO, -O3, hidden visibility).
+    testBuildType = project.findProperty('testBuildType') ?: 'debug'
+
     buildTypes {
         release {
             minifyEnabled false
+            // Release (not AGP's default RelWithDebInfo) picks up the LTO and visibility flags in
+            // src/main/cpp/CMakeLists.txt.
+            externalNativeBuild {
+                cmake {
+                    arguments '-DCMAKE_BUILD_TYPE=Release'
+                }
+            }
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }

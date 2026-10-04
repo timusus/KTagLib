@@ -3,7 +3,6 @@
 #include <cerrno>
 #include <climits>
 #include <cstring>
-#include <functional>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -340,8 +339,12 @@ static TagLib::String toTagLibString(JNIEnv *env, jstring str) {
         throw JniException("GetStringChars returned null");
     }
     // Release the chars even if the ByteVector allocation throws.
-    std::unique_ptr<const jchar, std::function<void(const jchar *)>> charsGuard(
-            chars, [env, str](const jchar *c) { env->ReleaseStringChars(str, c); });
+    struct ReleaseChars {
+        JNIEnv *env;
+        jstring str;
+        void operator()(const jchar *c) const { env->ReleaseStringChars(str, c); }
+    };
+    std::unique_ptr<const jchar, ReleaseChars> charsGuard(chars, ReleaseChars{env, str});
     TagLib::ByteVector bytes(static_cast<unsigned int>(length) * 2, 0);
     for (jsize i = 0; i < length; i++) {
         bytes[i * 2] = static_cast<char>(chars[i] & 0xFF);
@@ -500,7 +503,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     });
 }
 
-extern "C" void JNI_OnUnload(JavaVM *vm, void *reserved) {
+extern "C" JNIEXPORT void JNI_OnUnload(JavaVM *vm, void *reserved) {
     JNIEnv *env;
     if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK) {
         return;
