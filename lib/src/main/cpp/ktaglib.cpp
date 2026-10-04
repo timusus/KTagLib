@@ -16,6 +16,18 @@
 #include <toolkit/tmap.h>
 #include <toolkit/tpropertymap.h>
 #include <toolkit/tdebuglistener.h>
+#include <ape/apeproperties.h>
+#include <asf/asfproperties.h>
+#include <dsdiff/dsdiffproperties.h>
+#include <dsf/dsfproperties.h>
+#include <flac/flacproperties.h>
+#include <matroska/matroskaproperties.h>
+#include <mp4/mp4properties.h>
+#include <riff/aiff/aiffproperties.h>
+#include <riff/wav/wavproperties.h>
+#include <shorten/shortenproperties.h>
+#include <trueaudio/trueaudioproperties.h>
+#include <wavpack/wavpackproperties.h>
 
 // Configure verbose logging for detailed diagnostics
 // Set to 1 to enable detailed property/value logging (useful for debugging)
@@ -141,6 +153,24 @@ static TagLib::ByteVector largestPicture(const TagLib::List<TagLib::FLAC::Pictur
 
 // Converts a Java string to a TagLib::String through its UTF-16 code units.
 //
+// Returns the bits per sample of formats that store one, or 0. TagLib exposes it only on the
+// format-specific Properties subclasses, not on TagLib::AudioProperties.
+static int bitsPerSample(const TagLib::AudioProperties *properties) {
+    if (auto p = dynamic_cast<const TagLib::FLAC::Properties *>(properties)) return p->bitsPerSample();
+    if (auto p = dynamic_cast<const TagLib::MP4::Properties *>(properties)) return p->bitsPerSample();
+    if (auto p = dynamic_cast<const TagLib::RIFF::WAV::Properties *>(properties)) return p->bitsPerSample();
+    if (auto p = dynamic_cast<const TagLib::RIFF::AIFF::Properties *>(properties)) return p->bitsPerSample();
+    if (auto p = dynamic_cast<const TagLib::APE::Properties *>(properties)) return p->bitsPerSample();
+    if (auto p = dynamic_cast<const TagLib::WavPack::Properties *>(properties)) return p->bitsPerSample();
+    if (auto p = dynamic_cast<const TagLib::TrueAudio::Properties *>(properties)) return p->bitsPerSample();
+    if (auto p = dynamic_cast<const TagLib::ASF::Properties *>(properties)) return p->bitsPerSample();
+    if (auto p = dynamic_cast<const TagLib::Matroska::Properties *>(properties)) return p->bitsPerSample();
+    if (auto p = dynamic_cast<const TagLib::DSF::Properties *>(properties)) return p->bitsPerSample();
+    if (auto p = dynamic_cast<const TagLib::DSDIFF::Properties *>(properties)) return p->bitsPerSample();
+    if (auto p = dynamic_cast<const TagLib::Shorten::Properties *>(properties)) return p->bitsPerSample();
+    return 0;
+}
+
 // GetStringUTFChars returns *modified* UTF-8, which encodes characters outside the BMP (emoji, for
 // example) as a pair of 3-byte surrogates that standard UTF-8 decoders reject, and a bare
 // TagLib::String(const char *) is decoded as Latin-1. Either way non-ASCII text gets corrupted on
@@ -193,7 +223,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     jclass audioPropertiesClass = env->FindClass("com/simplecityapps/ktaglib/AudioProperties");
     globalAudioPropertiesClass = reinterpret_cast<jclass>(env->NewGlobalRef(audioPropertiesClass));
     env->DeleteLocalRef(audioPropertiesClass);
-    audioPropertiesInit = env->GetMethodID(globalAudioPropertiesClass, "<init>", "(IIII)V");
+    audioPropertiesInit = env->GetMethodID(globalAudioPropertiesClass, "<init>", "(IIIII)V");
 
     jclass setClass = env->FindClass("java/util/Set");
     globalSetClass = reinterpret_cast<jclass>(env->NewGlobalRef(setClass));
@@ -362,11 +392,12 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
 #if KTAGLIB_ENABLE_VERBOSE_LOGGING
         // Log audio properties
         __android_log_print(ANDROID_LOG_DEBUG, "kTagLib",
-            "Audio properties: duration=%dms, bitrate=%dkbps, sampleRate=%dHz, channels=%d",
+            "Audio properties: duration=%dms, bitrate=%dkbps, sampleRate=%dHz, channels=%d, bitsPerSample=%d",
             audioProperties->lengthInMilliseconds(),
             audioProperties->bitrate(),
             audioProperties->sampleRate(),
-            audioProperties->channels());
+            audioProperties->channels(),
+            bitsPerSample(audioProperties));
 #endif
 
         jAudioProperties = env->NewObject(
@@ -375,7 +406,8 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
                 (jint) audioProperties->lengthInMilliseconds(),
                 (jint) audioProperties->bitrate(),
                 (jint) audioProperties->sampleRate(),
-                (jint) audioProperties->channels()
+                (jint) audioProperties->channels(),
+                (jint) bitsPerSample(audioProperties)
         );
     } else {
         __android_log_print(ANDROID_LOG_WARN, "kTagLib", "Audio properties not available");
