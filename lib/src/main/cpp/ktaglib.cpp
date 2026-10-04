@@ -388,6 +388,7 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
 #endif
 
     jobject jPropertyMap = env->NewObject(globalHashMapClass, hashMapInit);
+    bool hasTitle = false;
 
     // A recognized file without a tag (e.g. a bare WAV with no ID3) still has audio properties
     // worth returning, so only skip property extraction here rather than the whole result -
@@ -426,6 +427,11 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
                 (unsigned long)taglibProperty.second.size());
 #endif
 
+            if (taglibProperty.first == "TITLE" && !taglibProperty.second.isEmpty()
+                && !taglibProperty.second.front().isEmpty()) {
+                hasTitle = true;
+            }
+
             jobject values = env->NewObject(globalArrayListClass, arrayListInit, (jint) 0);
             for (auto &value : taglibProperty.second) {
 #if KTAGLIB_ENABLE_VERBOSE_LOGGING
@@ -446,6 +452,25 @@ Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, j
 
     jobject jAudioProperties = nullptr;
     auto audioProperties = fileRef.audioProperties();
+
+    // TagLib's Matroska property map omits the Segment Info title, so offer it as TITLE when the
+    // file has no track or tag-level title.
+    if (!hasTitle) {
+        if (auto mkvProperties = dynamic_cast<const TagLib::Matroska::Properties *>(audioProperties)) {
+            const TagLib::String segmentTitle = mkvProperties->title();
+            if (!segmentTitle.isEmpty()) {
+                jstring key = toJString(env, TagLib::String("TITLE"));
+                jobject values = env->NewObject(globalArrayListClass, arrayListInit, (jint) 1);
+                jstring jValue = toJString(env, segmentTitle);
+                env->CallBooleanMethod(values, addListElement, jValue);
+                jobject previous = env->CallObjectMethod(jPropertyMap, addProperty, key, values);
+                env->DeleteLocalRef(previous);
+                env->DeleteLocalRef(jValue);
+                env->DeleteLocalRef(values);
+                env->DeleteLocalRef(key);
+            }
+        }
+    }
     if (audioProperties != nullptr) {
 #if KTAGLIB_ENABLE_VERBOSE_LOGGING
         // Log audio properties
