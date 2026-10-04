@@ -549,7 +549,27 @@ static jobject toJAudioProperties(JNIEnv *env, const TagLib::AudioProperties *au
     return jAudioProperties;
 }
 
-static jobject getMetadata(JNIEnv *env, jint file_descriptor, jstring filename) {
+// Converts a Java String[] of property keys to TagLib's canonical (uppercase) form.
+static TagLib::StringList toPropertyKeys(JNIEnv *env, jobjectArray keys) {
+    TagLib::StringList result;
+    const jsize length = env->GetArrayLength(keys);
+    checkJni(env, "GetArrayLength");
+    for (jsize i = 0; i < length; i++) {
+        LocalRef<jstring> key(env, (jstring) env->GetObjectArrayElement(keys, i));
+        checkJni(env, "GetObjectArrayElement");
+        // Null elements (Java callers only) are dropped.
+        if (key.get() != nullptr) {
+            result.append(toTagLibString(env, key.get()).upper());
+        }
+    }
+    return result;
+}
+
+// Reads the file's metadata. If keys is non-null, the property map holds only the properties whose
+// (uppercase) key is in it; otherwise it holds them all.
+static jobject getMetadata(JNIEnv *env, jint file_descriptor, jstring filename, const TagLib::StringList *keys) {
+    auto wanted = [keys](const TagLib::String &key) { return keys == nullptr || keys->contains(key); };
+
 
 #if KTAGLIB_ENABLE_VERBOSE_LOGGING
     // Log function entry with file descriptor
@@ -621,6 +641,10 @@ static jobject getMetadata(JNIEnv *env, jint file_descriptor, jstring filename) 
                 hasTitle = true;
             }
 
+            if (!wanted(taglibProperty.first)) {
+                continue;
+            }
+
             LocalRef<jstring> key(env, toJString(env, taglibProperty.first));
             LocalRef<jobject> values(env, toJStringList(env, taglibProperty.second));
             LocalRef<jobject> previous(env, env->CallObjectMethod(jPropertyMap.get(), addProperty, key.get(), values.get()));
@@ -632,7 +656,7 @@ static jobject getMetadata(JNIEnv *env, jint file_descriptor, jstring filename) 
 
     // TagLib's Matroska property map omits the Segment Info title, so offer it as TITLE when the
     // file has no track or tag-level title.
-    if (!hasTitle) {
+    if (!hasTitle && wanted("TITLE")) {
         if (auto mkvProperties = dynamic_cast<const TagLib::Matroska::Properties *>(audioProperties)) {
             const TagLib::String segmentTitle = mkvProperties->title();
             if (!segmentTitle.isEmpty()) {
@@ -661,7 +685,19 @@ static jobject getMetadata(JNIEnv *env, jint file_descriptor, jstring filename) 
 extern "C"
 JNIEXPORT jobject JNICALL
 Java_com_simplecityapps_ktaglib_KTagLib_getMetadata(JNIEnv *env, jclass clazz, jint file_descriptor, jstring filename) {
-    return guarded(env, "getMetadata", (jobject) nullptr, [&] { return getMetadata(env, file_descriptor, filename); });
+    return guarded(env, "getMetadata", (jobject) nullptr, [&] { return getMetadata(env, file_descriptor, filename, nullptr); });
+}
+
+extern "C"
+JNIEXPORT jobject JNICALL
+Java_com_simplecityapps_ktaglib_KTagLib_getMetadataForKeys(JNIEnv *env, jclass clazz, jint file_descriptor, jstring filename, jobjectArray keys) {
+    return guarded(env, "getMetadataForKeys", (jobject) nullptr, [&]() -> jobject {
+        if (keys == nullptr) {
+            return getMetadata(env, file_descriptor, filename, nullptr);
+        }
+        const TagLib::StringList propertyKeys = toPropertyKeys(env, keys);
+        return getMetadata(env, file_descriptor, filename, &propertyKeys);
+    });
 }
 
 static jboolean writeMetadata(JNIEnv *env, jint file_descriptor, jobject properties, jstring filename) {

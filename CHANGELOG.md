@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- `getMetadata(fileDescriptor, filename, keys: Set<String>)`: returns only the properties whose
+  key is in `keys` (matched case-insensitively), skipping the rest natively before any Java strings
+  are created for them. The existing `getMetadata` is unchanged.
+
 ### Changed
 
 - **Behavioural change: callers now keep ownership of the file descriptor.** `getMetadata`,

@@ -40,6 +40,10 @@ This returns a Metadata object, containing the tags and audio properties of the 
 
 The optional `filename` parameter helps with file type detection. Providing the filename (with extension) is recommended for better compatibility, especially for files with large metadata blocks.
 
+To read only some tags, pass the keys you want (case-insensitive); the rest are skipped natively:
+
+`KTagLib().getMetadata(fileDescriptor: Int, filename: String?, keys: Set<String>)`
+
 #### Retrieve Artwork ####
 
 `KTagLib().getArtwork(fileDescriptor: Int, filename: String? = null)`

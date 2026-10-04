@@ -34,6 +34,23 @@ class KTagLib {
     external fun getMetadata(fileDescriptor: Int, filename: String? = null): Metadata?
 
     /**
+     * Like [getMetadata], but [Metadata.propertyMap] holds only the properties whose key is in
+     * [keys] (TagLib property names such as `TITLE` or `ARTIST`, matched case-insensitively; the
+     * map's keys are uppercase). The others are skipped natively, before any Java strings are
+     * created for them. Audio properties are returned as usual.
+     *
+     * @param fileDescriptor associated with the file whose properties are to be retrieved. Still
+     * owned by the caller, who must close it (see [KTagLib]); pass `pfd.fd`, not `pfd.detachFd()`.
+     * @param filename optional filename hint to help with file type detection (recommended for better compatibility)
+     * @param keys the property keys to return
+     * @return the metadata, or null if the file can't be read or its type isn't recognized
+     */
+    fun getMetadata(fileDescriptor: Int, filename: String?, keys: Set<String>): Metadata? =
+        getMetadataForKeys(fileDescriptor, filename, keys.toTypedArray())
+
+    private external fun getMetadataForKeys(fileDescriptor: Int, filename: String?, keys: Array<String>): Metadata?
+
+    /**
      * Returns true if the tags are successfully written to the file associated with the file descriptor.
      *
      * Each key in [properties] names a tag field (a TagLib property name such as `TITLE` or
