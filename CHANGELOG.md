@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 3.0.0
 
 ### Added
 
@@ -18,7 +18,8 @@
   the original's file offset, so the offset is unspecified after a call.
 - The release native library is built as CMake `Release` with `-O3`, link-time optimisation
   across KTagLib and TagLib, and hidden visibility (only `JNI_OnLoad`, `JNI_OnUnload` and the
-  `Java_*` entry points are exported), which makes `libktaglib.so` about 22-27% smaller.
+  `Java_*` entry points are exported), which makes `libktaglib.so` about 22-27% smaller. It is
+  still compiled with `-g`, so the unstripped library keeps debug info for crash symbolication.
 
 ### Fixed
 

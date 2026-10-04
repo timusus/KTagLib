@@ -5,7 +5,7 @@ Kotlin bindings for [TagLib](https://github.com/taglib/taglib)
 Gradle:
 
 	dependencies {
-	    implementation("com.simplecityapps:ktaglib:2.2.0")
+	    implementation("com.simplecityapps:ktaglib:3.0.0")
 	}
 
 KTagLib is published to Maven Central, so no extra repository declaration is needed beyond `mavenCentral()`.
